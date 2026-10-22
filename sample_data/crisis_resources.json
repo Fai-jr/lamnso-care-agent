@@ -1,0 +1,7 @@
+{
+  "_note": "Fill in ONLY contacts you have personally verified. Entries with verified=false are never shown to users.",
+  "resources": [
+    {"name": "Local emergency services", "contact": "", "region": "Cameroon", "verified": false},
+    {"name": "Trusted local mental-health service", "contact": "", "region": "Cameroon", "verified": false}
+  ]
+}
