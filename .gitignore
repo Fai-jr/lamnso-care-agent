@@ -1,0 +1,31 @@
+# secrets
+.env
+*.key
+*.pem
+
+# model weights (distributed via GitHub Release, not git)
+translation/weights/*
+!translation/weights/.gitkeep
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# Zetaris driver and platform bundle live outside the repo
+*.jar
+zetaris-platform/
+
+# python / node
+venv/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+.next/
+
+# personal / large
+*.wav
+*.mp3
+*.ods
+*.xlsx
+checkpoints/
