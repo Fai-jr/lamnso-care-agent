@@ -8,7 +8,9 @@
 """
 from __future__ import annotations
 
-from typing import Any, Protocol
+import re
+from collections import Counter
+from typing import Any, Optional, Protocol
 
 from backend.app.memory import SessionMemory
 from backend.app.nightshift import NightshiftError
@@ -20,7 +22,7 @@ LAMNSO_MARKERS = set("əŋʼèéìíòóùúàáǎě")
 SYSTEM_PROMPT = (
     "You are a warm, supportive listener for people who may be feeling stressed, sad or anxious. "
     "You are not a therapist or doctor: do not diagnose, do not give medical or medication advice. "
-    "Reply in 2 or 3 short, simple sentences using plain everyday words, because your reply will be "
+    "Reply in 2 or 3 very short, simple sentences (under 12 words each) using plain everyday words, because your reply will be "
     "machine-translated into Lamnso. Avoid idioms, metaphors and lists. Ask at most one gentle question. "
     "If the person talks about harming themselves or someone else, say you are concerned and encourage "
     "them to contact someone they trust or their local emergency services."
@@ -35,6 +37,48 @@ LLM_DOWN_MSG = "I am having trouble connecting right now. Please try again in a 
 
 class Translator(Protocol):
     def translate(self, english_text: str) -> str: ...
+
+
+def split_sentences(text: str) -> list[str]:
+    """The translation model was trained on short sentences, so it is given one sentence at a time."""
+    return [p.strip() for p in re.split(r"(?<=[.!?])\s+", text.strip()) if p.strip()]
+
+
+def _tokens(text: str) -> list[str]:
+    toks = (t.strip(".,;:?!\"'") for t in text.lower().split())
+    return [t for t in toks if t]
+
+
+def looks_degenerate(text: str) -> bool:
+    """Catches the looping output a greedy decoder produces on inputs it handles badly:
+    many words with few distinct ones, or the same three-word run three or more times."""
+    toks = _tokens(text)
+    if len(toks) >= 8 and len(set(toks)) / len(toks) < 0.5:
+        return True
+    trigrams = Counter(zip(toks, toks[1:], toks[2:]))
+    return bool(trigrams) and max(trigrams.values()) >= 3
+
+
+def translate_reply(translator: Optional[Translator], english: str) -> tuple[Optional[str], str]:
+    """English reply -> Lamnso, sentence by sentence. All-or-nothing: if any sentence comes back empty,
+    failed or repetitive, no Lamnso is shown (the English reply is still returned). Better no translation
+    than a wrong one in a mental-health setting."""
+    if translator is None:
+        return None, "translate:unavailable"
+    sentences = split_sentences(english)
+    if not sentences:
+        return None, "translate:nothing_to_translate"
+    pieces: list[str] = []
+    for sentence in sentences:
+        try:
+            piece = (translator.translate(sentence) or "").strip()
+        except Exception:
+            piece = ""
+        if piece and not looks_degenerate(piece):
+            pieces.append(piece)
+    if len(pieces) != len(sentences):
+        return None, f"translate:withheld ({len(pieces)}/{len(sentences)} sentences usable)"
+    return " ".join(pieces), f"translate:ok ({len(pieces)}/{len(sentences)} sentences)"
 
 
 def looks_like_lamnso(text: str) -> bool:
@@ -75,16 +119,10 @@ def handle_message(message: str, session_id: str, *, llm: Any, translator: Trans
     base.update(model_used=result.model, latency_ms=result.latency_ms)
     base["trace"].append(f"nightshift:{result.requested_model} -> answered by {result.model}")
 
-    # 5. Translate the reply into Lamnso.
-    lamnso = ""
-    if translator is not None:
-        try:
-            lamnso = (translator.translate(english) or "").strip()
-        except Exception as exc:  # a translator failure must never hide a good reply
-            base["trace"].append(f"translate:error:{exc.__class__.__name__}")
-    ok = bool(lamnso)
-    base["trace"].append(f"translate:{'ok' if ok else 'empty_or_unavailable'}")
-    base.update(reply_english=english, reply_lamnso=lamnso or None, route="agent", translation_ok=ok)
+    # 5. Translate the reply into Lamnso, one sentence at a time.
+    lamnso, translate_trace = translate_reply(translator, english)
+    base["trace"].append(translate_trace)
+    base.update(reply_english=english, reply_lamnso=lamnso, route="agent", translation_ok=lamnso is not None)
 
     memory.remember(session_id, message, english)
     return base
