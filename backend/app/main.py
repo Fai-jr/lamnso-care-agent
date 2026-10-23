@@ -50,6 +50,11 @@ class ChatIn(BaseModel):
     session_id: str = Field(default="default", max_length=100)
 
 
+class SentencePair(BaseModel):
+    english: str
+    lamnso: Optional[str] = None
+
+
 class ChatOut(BaseModel):
     reply_lamnso: Optional[str]
     reply_english: Optional[str]
@@ -57,6 +62,7 @@ class ChatOut(BaseModel):
     model_used: Optional[str]
     translation_ok: Optional[bool]
     trace: list[str]
+    sentences: list[SentencePair] = []
     notice: str = "Not a substitute for professional care. In an emergency contact local emergency services."
 
 

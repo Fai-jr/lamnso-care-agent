@@ -22,10 +22,15 @@ LAMNSO_MARKERS = set("əŋʼèéìíòóùúàáǎě")
 SYSTEM_PROMPT = (
     "You are a warm, supportive listener for people who may be feeling stressed, sad or anxious. "
     "You are not a therapist or doctor: do not diagnose, do not give medical or medication advice. "
-    "Reply in 2 or 3 very short, simple sentences (under 12 words each) using plain everyday words, because your reply will be "
+    "Reply in 2 or 3 very short, simple sentences (under 9 words each) using plain everyday words. Do not use contractions (write \"I am\", never \"I'm\") and avoid idioms such as \"tough day\", because your reply will be "
     "machine-translated into Lamnso. Avoid idioms, metaphors and lists. Ask at most one gentle question. "
     "If the person talks about harming themselves or someone else, say you are concerned and encourage "
     "them to contact someone they trust or their local emergency services."
+)
+
+SIMPLIFY_PROMPT = (
+    "Please say that again in 2 very short, plain sentences of 8 words or fewer each. "
+    "No contractions, no idioms, no questions."
 )
 
 UNSUPPORTED_LAMNSO_MSG = (
@@ -59,26 +64,32 @@ def looks_degenerate(text: str) -> bool:
     return bool(trigrams) and max(trigrams.values()) >= 3
 
 
-def translate_reply(translator: Optional[Translator], english: str) -> tuple[Optional[str], str]:
-    """English reply -> Lamnso, sentence by sentence. All-or-nothing: if any sentence comes back empty,
-    failed or repetitive, no Lamnso is shown (the English reply is still returned). Better no translation
-    than a wrong one in a mental-health setting."""
-    if translator is None:
-        return None, "translate:unavailable"
+def _translate(translator: Optional[Translator], english: str):
+    """-> (pairs, lamnso_or_None, trace). pairs = [(english_sentence, lamnso_sentence_or_None)].
+    All-or-nothing for the joined Lamnso reply: if any sentence comes back empty, failed or repetitive, no
+    joined Lamnso is returned (the pairs and the English reply still are). Better no translation than a
+    wrong one in a mental-health setting."""
     sentences = split_sentences(english)
+    if translator is None:
+        return [(x, None) for x in sentences], None, "translate:unavailable"
     if not sentences:
-        return None, "translate:nothing_to_translate"
-    pieces: list[str] = []
+        return [], None, "translate:nothing_to_translate"
+    pairs: list[tuple[str, Optional[str]]] = []
     for sentence in sentences:
         try:
             piece = (translator.translate(sentence) or "").strip()
         except Exception:
             piece = ""
-        if piece and not looks_degenerate(piece):
-            pieces.append(piece)
-    if len(pieces) != len(sentences):
-        return None, f"translate:withheld ({len(pieces)}/{len(sentences)} sentences usable)"
-    return " ".join(pieces), f"translate:ok ({len(pieces)}/{len(sentences)} sentences)"
+        pairs.append((sentence, piece if piece and not looks_degenerate(piece) else None))
+    good = [lam for _, lam in pairs if lam]
+    if len(good) != len(pairs):
+        return pairs, None, f"translate:withheld ({len(good)}/{len(pairs)} sentences usable)"
+    return pairs, " ".join(good), f"translate:ok ({len(good)}/{len(pairs)} sentences)"
+
+
+def translate_reply(translator: Optional[Translator], english: str) -> tuple[Optional[str], str]:
+    _, lamnso, trace = _translate(translator, english)
+    return lamnso, trace
 
 
 def looks_like_lamnso(text: str) -> bool:
@@ -90,7 +101,7 @@ def handle_message(message: str, session_id: str, *, llm: Any, translator: Trans
     """Returns a dict with reply_lamnso, reply_english, route, model_used, translation_ok, trace."""
     message = message.strip()
     base: dict = {"reply_lamnso": None, "reply_english": None, "route": "", "model_used": None,
-                  "translation_ok": None, "latency_ms": 0, "trace": []}
+                  "translation_ok": None, "latency_ms": 0, "trace": [], "sentences": []}
 
     # 1. Safety first. No model, no translation, no network.
     if is_crisis(message):
@@ -120,9 +131,25 @@ def handle_message(message: str, session_id: str, *, llm: Any, translator: Trans
     base["trace"].append(f"nightshift:{result.requested_model} -> answered by {result.model}")
 
     # 5. Translate the reply into Lamnso, one sentence at a time.
-    lamnso, translate_trace = translate_reply(translator, english)
+    pairs, lamnso, translate_trace = _translate(translator, english)
     base["trace"].append(translate_trace)
-    base.update(reply_english=english, reply_lamnso=lamnso, route="agent", translation_ok=lamnso is not None)
+
+    # 5b. If the translator could not cope, ask the model once for a simpler reply and try again.
+    if lamnso is None and translator is not None and pairs:
+        try:
+            retry = llm.chat(messages + [{"role": "assistant", "content": english},
+                                         {"role": "user", "content": SIMPLIFY_PROMPT}])
+        except NightshiftError:
+            retry = None
+        if retry is not None:
+            r_pairs, r_lamnso, r_trace = _translate(translator, retry.text)
+            base["trace"].append(f"retry:simplified -> {r_trace}")
+            if r_lamnso is not None:  # keep the simpler reply only if it actually translated
+                english, pairs, lamnso = retry.text, r_pairs, r_lamnso
+                base["model_used"] = retry.model
+
+    base.update(reply_english=english, reply_lamnso=lamnso, route="agent", translation_ok=lamnso is not None,
+                sentences=[{"english": e, "lamnso": l} for e, l in pairs])
 
     memory.remember(session_id, message, english)
     return base
