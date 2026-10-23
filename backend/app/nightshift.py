@@ -59,12 +59,13 @@ def _extract_text(message: dict[str, Any]) -> str:
 class NightshiftClient:
     def __init__(self, base_url: str, token: str, model: str, app_id: str,
                  timeout: float = 180.0, transport: httpx.BaseTransport | None = None,
-                 sleep=time.sleep):
+                 sleep=time.sleep, extra_body: dict[str, Any] | None = None):
         self.base_url = normalise_base_url(base_url)
         self.token = token
         self.model = model
         self.app_id = app_id
         self._sleep = sleep
+        self.extra_body = dict(extra_body or {})
         # 180 s: a model load on the runtime can take minutes.
         self._http = httpx.Client(timeout=timeout, transport=transport)
 
@@ -86,9 +87,9 @@ class NightshiftClient:
             return "unauthorized"
         return "online" if r.status_code == 200 else "offline"
 
-    def chat(self, messages: list[dict[str, str]], max_tokens: int = 300,
+    def chat(self, messages: list[dict[str, str]], max_tokens: int = 1024,
              temperature: float = 0.4) -> LLMResult:
-        body = {"model": self.model, "messages": messages, "max_tokens": max_tokens,
+        body = {**self.extra_body, "model": self.model, "messages": messages, "max_tokens": max_tokens,
                 "temperature": temperature, "stream": False}
         started = time.monotonic()
         resp = None
@@ -129,7 +130,7 @@ class SampleNightshift:
     def health(self) -> str:
         return "sample"
 
-    def chat(self, messages, max_tokens: int = 300, temperature: float = 0.4) -> LLMResult:
+    def chat(self, messages, max_tokens: int = 1024, temperature: float = 0.4) -> LLMResult:
         return LLMResult(
             text=("I am sorry you are feeling this way. It sounds like a lot to carry. "
                   "Would you like to tell me more about what has been happening?"),

@@ -170,3 +170,18 @@ def test_api_sample_mode(monkeypatch, tmp_path):
     lines = (tmp_path / "trace.jsonl").read_text().splitlines()
     assert len(lines) == 2 and "feel very sad" not in "".join(lines)  # content is not logged by default
     app_main.get_components.cache_clear()
+
+
+# ---------- config ----------
+def test_meterless_env_names_win_over_legacy_names(monkeypatch):
+    from backend.app.config import get_settings
+    for k in ("METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "METERLESS_MODEL",
+              "NIGHTSHIFT_BASE_URL", "NIGHTSHIFT_TOKEN", "NIGHTSHIFT_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    assert get_settings().nightshift_model == "meterless/auto"      # default
+    monkeypatch.setenv("NIGHTSHIFT_TOKEN", "old")
+    assert get_settings().nightshift_token == "old"                 # legacy name still works
+    monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", "new")
+    monkeypatch.setenv("METERLESS_BASE_URL", "http://192.168.1.20:8088/v1")
+    s = get_settings()
+    assert s.nightshift_token == "new" and s.nightshift_base_url == "http://192.168.1.20:8088/v1"

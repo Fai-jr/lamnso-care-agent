@@ -36,7 +36,8 @@ def get_components() -> Components:
         llm, translator = SampleNightshift(), SampleTranslator()
     else:
         llm = NightshiftClient(s.nightshift_base_url, s.nightshift_token, s.nightshift_model,
-                               s.app_id, timeout=s.nightshift_timeout)
+                               s.app_id, timeout=s.nightshift_timeout,
+                               extra_body=s.nightshift_extra_body)
         try:
             translator = LamnsoTranslator(s.weights_path, s.tokenizer_path)
         except TranslatorUnavailable as exc:
@@ -60,7 +61,7 @@ class ChatOut(BaseModel):
 
 
 app = FastAPI(title="Lamnso Care Agent")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "http://localhost:3001"],
                    allow_methods=["*"], allow_headers=["*"])
 
 
