@@ -74,6 +74,8 @@ class Settings:
     zetaris_jar_path: str
     zetaris_user: str
     zetaris_password: str = field(repr=False)
+    hmem_url: str
+    hmem_token: str = field(repr=False)
 
 
 def get_settings() -> Settings:
@@ -96,4 +98,6 @@ def get_settings() -> Settings:
         zetaris_jar_path=os.environ.get("ZETARIS_JAR_PATH", ""),
         zetaris_user=os.environ.get("ZETARIS_USER", ""),
         zetaris_password=os.environ.get("ZETARIS_PASSWORD", ""),
+        hmem_url=os.environ.get("HMEM_URL", "http://127.0.0.1:8765"),
+        hmem_token=os.environ.get("HMEM_TOKEN", ""),
     )

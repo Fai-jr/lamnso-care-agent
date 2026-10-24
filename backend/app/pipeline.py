@@ -12,6 +12,7 @@ import re
 from collections import Counter
 from typing import Any, Optional, Protocol
 
+from backend.app.hmem_client import HmemError
 from backend.app.memory import SessionMemory
 from backend.app.nightshift import NightshiftError
 from backend.app.safety import crisis_response, is_crisis
@@ -26,6 +27,11 @@ SYSTEM_PROMPT = (
     "machine-translated into Lamnso. Avoid idioms, metaphors and lists. Ask at most one gentle question. "
     "If the person talks about harming themselves or someone else, say you are concerned and encourage "
     "them to contact someone they trust or their local emergency services."
+)
+
+MEMORY_INTRO = (
+    "What you remember from earlier conversations with this person. Use it only if it is relevant right now, "
+    "gently and in your own words. Never quote it, never say you have a memory system:\n"
 )
 
 SIMPLIFY_PROMPT = (
@@ -97,11 +103,12 @@ def looks_like_lamnso(text: str) -> bool:
 
 
 def handle_message(message: str, session_id: str, *, llm: Any, translator: Translator | None,
-                   memory: SessionMemory, resources: list[dict]) -> dict:
+                   memory: SessionMemory, resources: list[dict], longterm: Any = None,
+                   user_key: str | None = None) -> dict:
     """Returns a dict with reply_lamnso, reply_english, route, model_used, translation_ok, trace."""
     message = message.strip()
     base: dict = {"reply_lamnso": None, "reply_english": None, "route": "", "model_used": None,
-                  "translation_ok": None, "latency_ms": 0, "trace": [], "sentences": []}
+                  "translation_ok": None, "latency_ms": 0, "trace": [], "sentences": [], "memories_used": []}
 
     # 1. Safety first. No model, no translation, no network.
     if is_crisis(message):
@@ -118,8 +125,18 @@ def handle_message(message: str, session_id: str, *, llm: Any, translator: Trans
 
     # 3-4. Memory + Nightshift.
     base["trace"].append("safety:no_crisis")
-    messages = ([{"role": "system", "content": SYSTEM_PROMPT}] + memory.recall(session_id)
-                + [{"role": "user", "content": message}])
+    notes = []
+    if longterm is not None and user_key:  # long-term memory is opt-in: the caller passes a key only if switched on
+        try:
+            notes = longterm.recall(user_key, message)
+            base["trace"].append(f"hmem:recalled {len(notes)} note(s)" if notes else "hmem:no_relevant_notes")
+        except HmemError:
+            base["trace"].append("hmem:unavailable")
+    base["memories_used"] = [{"id": n.id, "content": n.content, "score": n.score} for n in notes]
+    system = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if notes:
+        system.append({"role": "system", "content": MEMORY_INTRO + "\n".join(f"- {n.content}" for n in notes)})
+    messages = system + memory.recall(session_id) + [{"role": "user", "content": message}]
     try:
         result = llm.chat(messages)
     except NightshiftError as exc:

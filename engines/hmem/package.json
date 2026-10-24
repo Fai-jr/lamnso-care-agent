@@ -1,0 +1,16 @@
+{
+  "name": "lamnso-care-hmem",
+  "version": "0.1.0",
+  "description": "Privacy-hardened H-MEM (Meterless engine) service for the Lamnso Care Agent",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "serve": "tsx server.ts",
+    "test": "tsx --test test/*.test.ts",
+    "conformance": "tsx conformance/runner.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

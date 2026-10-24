@@ -1,0 +1,15 @@
+Lamnso Care Agent - H-MEM engine
+================================
+engines/hmem/src/**, engines/hmem/conformance/** and engines/hmem/LICENSE come from the Meterless project
+(https://github.com/Meterless/Meterless, engines/hmem), licensed under the Apache License 2.0.
+
+Copied unchanged: src/*.ts (the runnable reference implementation of the H-MEM spec), conformance/vectors/.
+One-line change: conformance/runner.ts - the default implementation path now points at this repo's
+engines/hmem/index.ts (the HMEM_IMPL environment variable still overrides it, exactly as upstream).
+
+Written for this project (hackathon build window): index.ts, care.ts, server.ts, test/*.
+
+Second change to upstream code: src/embeddings.ts. embed() is replaced by a deterministic, offline, care-domain
+embedder (concept axes for anxiety / sleep / low mood / loneliness / ... plus hashed stems). The H-MEM spec makes
+the embedder swappable, and the upstream README says the hash mock is meant to be replaced. tokenize(), cosine()
+and jaccard() are unchanged. The original is the file engines/hmem/reference in the Meterless repository.

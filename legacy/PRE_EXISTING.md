@@ -8,6 +8,7 @@ These existed before the hackathon build window (22 Oct 2026, 00:00 UTC) and are
 | SentencePiece tokenizer | translation/lamnso_tokenizer.model | Trained before the hackathon |
 | Crisis keyword safety net | translation/crisis_safety.py | Reused unchanged |
 | Original Rasa-based pipeline | legacy/integrate_rasa.py, legacy/crisis_responder.py, legacy/greeting_shortcuts.py, legacy/mental_health_keywords.py | Kept for reference only; NOT used by the new app |
+| H-MEM engine core (9 services + conformance suite) | engines/hmem/src, engines/hmem/conformance | Open source (Apache-2.0) from github.com/Meterless/Meterless; see engines/hmem/NOTICE. `embed()` was replaced, `conformance/runner.ts` has a one-line default-path change |
 | Next.js chat UI | frontend/ | Existing project, adapted for this build |
 | Training data (not published) | not in repo | English-Lamnso pairs from the Lamnso dictionary and Bible translation; redistribution terms being verified |
 
@@ -15,7 +16,9 @@ These existed before the hackathon build window (22 Oct 2026, 00:00 UTC) and are
 
 - FastAPI backend (backend/app): pipeline, Nightshift client, safety wrapper, memory seam, tracing
 - translation/translator.py (wrapper with sample mode), translation/download_weights.py
-- Tests (tests/), Zetaris integration, Meterless engine work (in progress)
+- H-MEM integration: engines/hmem/index.ts, care.ts, server.ts, care-domain embedder, privacy policy, tests;
+  backend/app/hmem_client.py, learning.py, memory endpoints (export / forget / feedback)
+- Tests (tests/), Zetaris integration (in progress)
 
 ## Privacy
 
