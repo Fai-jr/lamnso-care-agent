@@ -1,0 +1,86 @@
+
+> lamnso-care-hmem@0.1.0 test
+> tsx --test test/*.test.ts
+
+TAP version 13
+# Subtest: remember then recall in a fresh service instance (persistence across sessions)
+ok 1 - remember then recall in a fresh service instance (persistence across sessions)
+  ---
+  duration_ms: 6.753768
+  type: 'test'
+  ...
+# Subtest: users are isolated from each other
+ok 2 - users are isolated from each other
+  ---
+  duration_ms: 2.016798
+  type: 'test'
+  ...
+# Subtest: records without an owner are never returned
+ok 3 - records without an owner are never returned
+  ---
+  duration_ms: 0.444707
+  type: 'test'
+  ...
+# Subtest: policy: personal identifiers, instructions, length and bad ids are rejected
+ok 4 - policy: personal identifiers, instructions, length and bad ids are rejected
+  ---
+  duration_ms: 0.559836
+  type: 'test'
+  ...
+# Subtest: duplicates are merged and each user has a cap
+ok 5 - duplicates are merged and each user has a cap
+  ---
+  duration_ms: 1.00049
+  type: 'test'
+  ...
+# Subtest: feedback follows the spec deltas and only works on your own notes
+ok 6 - feedback follows the spec deltas and only works on your own notes
+  ---
+  duration_ms: 0.916585
+  type: 'test'
+  ...
+# Subtest: the audit ledger never stores the user's query text
+ok 7 - the audit ledger never stores the user's query text
+  ---
+  duration_ms: 1.384541
+  type: 'test'
+  ...
+# Subtest: forget erases content from state, ledger and backups, and keeps other users
+ok 8 - forget erases content from state, ledger and backups, and keeps other users
+  ---
+  duration_ms: 21.648551
+  type: 'test'
+  ...
+# Subtest: export omits embeddings and owner ids
+ok 9 - export omits embeddings and owner ids
+  ---
+  duration_ms: 0.740791
+  type: 'test'
+  ...
+# Subtest: full flow over HTTP: remember, recall, feedback, export, forget
+ok 10 - full flow over HTTP: remember, recall, feedback, export, forget
+  ---
+  duration_ms: 59.814522
+  type: 'test'
+  ...
+# Subtest: errors: policy 422, bad JSON 400, unknown route 404, oversized 413
+ok 11 - errors: policy 422, bad JSON 400, unknown route 404, oversized 413
+  ---
+  duration_ms: 21.196088
+  type: 'test'
+  ...
+# Subtest: optional bearer token is enforced
+ok 12 - optional bearer token is enforced
+  ---
+  duration_ms: 7.918956
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 408.185082

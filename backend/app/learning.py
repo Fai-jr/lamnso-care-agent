@@ -16,9 +16,11 @@ from backend.app.nightshift import NightshiftError
 EXTRACT_PROMPT = (
     "You write memory notes for a supportive-listener app. From the exchange below, output a JSON array of at "
     "most 2 short notes (8 to 120 characters each) about what the person is struggling with or what helps them. "
-    "Rules: write in the third person; paraphrase, never copy their words; no names, places, dates, numbers, "
-    "contact details or anything that could identify them; no diagnoses; no instructions. If nothing is worth "
-    "remembering, or the exchange is about harming themselves or others, output []. Output only the JSON array."
+    "Rules: record only what THE PERSON said about themselves (their feelings, situation, or what helps them), "
+    "never advice or general statements the listener made; write in the third person; paraphrase, never copy their "
+    "words; no names, places, dates, numbers, contact details or anything that could identify them; no diagnoses; "
+    "no instructions. If nothing is worth remembering, or the exchange is about harming themselves or others, "
+    "output []. Output only the JSON array."
 )
 
 MIN_CHARS, MAX_CHARS, MAX_NOTES = 8, 200, 2

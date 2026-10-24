@@ -1,11 +1,17 @@
-"""Ask your Zetaris instance what it exposes, so the tables can be written for the real dialect.
+"""Probe your Zetaris instance and find a working way to create and use a table.
 
-    python scripts/explore_zetaris.py                 # read-only: lists namespaces and tables
-    python scripts/explore_zetaris.py --try-create    # also tries to create a tiny test table in OUR OWN namespace
+Zetaris tables live in a DATALAKE (per its SQL guide):
+    CREATE DATALAKE <name> OPTIONS (storageType 'Local', storagePath '<path inside the driver container>')
+    CREATE TABLE <datalake>.<directory>.<table> (...) USING iceberg
+    INSERT INTO <datalake>.<directory>.<table> VALUES (...)      SELECT ... FROM <datalake>.<directory>.<table>
 
-Each statement runs on its own (the platform allows one per call). Errors are expected for some of them;
-the output tells us which paths exist. No passwords are printed.
+    python scripts/explore_zetaris.py            # read-only discovery
+    python scripts/explore_zetaris.py --probe    # also tries candidate storage paths until a test table works
+
+Each statement runs on its own. Errors are expected for some; the output tells us what works. No passwords are printed.
 """
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -15,41 +21,76 @@ from backend.app.zetaris import ZetarisClient, ZetarisError  # noqa: E402
 
 READ_ONLY = [
     "SELECT 1",
-    "SHOW NAMESPACES IN lightning",
-    "SHOW NAMESPACES IN lightning.lakehouse",
-    "SHOW NAMESPACES IN lightning.lakehouse.iceberg",
-    "SHOW NAMESPACES IN lightning.datasource",
-    "SHOW NAMESPACES IN lightning.metastore",
-    "SHOW TABLES IN lightning",
-    "SHOW DATABASES",
+    "DESCRIBE MASTER DATASOURCE",
+    "SHOW DATASOURCE TABLES",
+    "DESCRIBE TABLES",
+    "SHOW CACHE TABLES",
+    "SHOW NAMESPACES OR TABLES IN lightning.metastore",
 ]
 
-NS = "lightning.lakehouse.iceberg.lamnso_care"
-TRY_CREATE = [
-    f"CREATE NAMESPACE IF NOT EXISTS {NS}",
-    f"CREATE TABLE {NS}.healthcheck (id INT, note STRING)",
-    f"INSERT INTO {NS}.healthcheck VALUES (1, 'hello')",
-    f"SELECT * FROM {NS}.healthcheck",
-    f"DROP TABLE {NS}.healthcheck",
-]
+DEFAULT_PATHS = ["/data/lamnso-lakehouse", "/opt/zetaris/lamnso-lakehouse", "/home/zetaris/lamnso-lakehouse",
+                 "/tmp/lamnso-lakehouse"]  # /tmp works but does not survive the container being recreated
 
 
-def run(client: ZetarisClient, statements: list, stop_on_error: bool = False) -> None:
+def candidate_paths() -> list:
+    """Mount points of the driver's volumes (from the platform's docker-compose.yml) come first."""
+    compose = Path(os.environ.get("ZETARIS_COMPOSE", "~/zetaris-platform/docker-compose.yml")).expanduser()
+    found = []
+    if compose.exists():
+        text = compose.read_text(encoding="utf-8", errors="replace")
+        for target in re.findall(r"^\s*-\s*(?:driver-data|customer-data)\s*:\s*(/[^\s:]+)", text, flags=re.M):
+            found.append(target.rstrip("/") + "/lamnso-lakehouse")
+    return list(dict.fromkeys(found + DEFAULT_PATHS))
+
+
+def run(client, statements, label_ok="OK") -> bool:
+    all_ok = True
     for sql in statements:
         print(f"\n> {sql}")
         try:
             rows = client.query(sql)
         except ZetarisError as exc:
-            print("  ERROR:", str(exc)[:300])
-            if stop_on_error:
-                print("  (stopping: later steps depend on this one)")
-                return
+            print("  ERROR:", str(exc)[:450])
+            all_ok = False
             continue
-        print(f"  OK ({len(rows)} rows)")
+        print(f"  {label_ok} ({len(rows)} rows)")
         for row in rows[:25]:
             print("   ", row)
         if len(rows) > 25:
             print(f"    ... {len(rows) - 25} more")
+    return all_ok
+
+
+def attempt(client, sql) -> bool:
+    print(f"\n> {sql}")
+    try:
+        rows = client.query(sql)
+    except ZetarisError as exc:
+        print("  ERROR:", str(exc)[:450])
+        return False
+    print(f"  OK ({len(rows)} rows)")
+    for row in rows[:10]:
+        print("   ", row)
+    return True
+
+
+def probe(client) -> None:
+    for i, path in enumerate(candidate_paths()):
+        lake = f"lamnso_probe_{i}"
+        print(f"\n=== candidate {i + 1}: storagePath '{path}' ===")
+        ok = (attempt(client, f"CREATE DATALAKE {lake} OPTIONS (storageType 'Local', storagePath '{path}')")
+              and attempt(client, f"CREATE TABLE {lake}.app.healthcheck (id BIGINT, note STRING) USING iceberg"))
+        if not ok:
+            attempt(client, f"DROP DATALAKE {lake}")   # best effort, so failed probes do not pile up
+            continue
+        attempt(client, f"INSERT INTO {lake}.app.healthcheck VALUES (1, 'hello')")
+        attempt(client, f"SELECT * FROM {lake}.app.healthcheck")
+        attempt(client, f"DROP TABLE {lake}.app.healthcheck")
+        print(f"\n*** SUCCESS: datalake '{lake}' with storagePath '{path}' can create tables. ***")
+        print("    Tell me this path. The probe datalake can stay; the real setup script creates its own.")
+        return
+    print("\nNo candidate path worked. Paste this whole output and the result of:")
+    print("  grep -nE 'volumes|driver-data|customer-data' ~/zetaris-platform/docker-compose.yml")
 
 
 def main() -> None:
@@ -59,9 +100,8 @@ def main() -> None:
         sys.exit(str(exc))
     try:
         run(client, READ_ONLY)
-        if "--try-create" in sys.argv:
-            print("\n=== trying to create a test table in our own namespace ===")
-            run(client, TRY_CREATE, stop_on_error=True)
+        if "--probe" in sys.argv:
+            probe(client)
     finally:
         client.close()
 
