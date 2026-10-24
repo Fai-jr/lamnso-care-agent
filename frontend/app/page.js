@@ -1,340 +1,298 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import axios from "axios";
 import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-const API_URL = "http://localhost:8000/api/chat/";
-const TTS_URL = "http://localhost:8000/api/tts/";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-// Generate a stable per-session sender ID so Rasa can track
-// conversation context across multiple messages
-function getSenderId() {
-  if (typeof window === "undefined") return "anonymous";
-  let id = window.sessionStorage.getItem("lamnso_sender_id");
-  if (!id) {
-    id = "user_" + Math.random().toString(36).slice(2, 11);
-    window.sessionStorage.setItem("lamnso_sender_id", id);
+const newId = () =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+
+function readStored(key, fallback) {
+  try {
+    const v = window.localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch {
+    return fallback;
   }
-  return id;
+}
+function writeStored(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* private mode: the page still works, settings just are not remembered */
+  }
 }
 
-export default function Home() {
-  const [messages, setMessages] = useState([
-    {
-      role: "bot",
-      text: "Wìy ó fèn, é wòsò súŋnín. À dzə̀ kitávín á?",
-      translation: "Please come, let's talk. Are you well?",
-    },
-  ]);
-  const [input, setInput] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [error, setError] = useState(null);
-  const scrollRef = useRef(null);
-  const senderIdRef = useRef(null);
-
-  useEffect(() => {
-    senderIdRef.current = getSenderId();
-  }, []);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
+async function api(path, body) {
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-  }, [messages, isSending]);
-
-  async function handleSend() {
-    const text = input.trim();
-    if (!text || isSending) return;
-
-    setError(null);
-    setMessages((prev) => [...prev, { role: "user", text }]);
-    setInput("");
-    setIsSending(true);
-
+  } catch {
+    throw new Error("I cannot reach the care service right now. Please check that it is running and try again.");
+  }
+  if (!res.ok) {
+    let detail = "";
     try {
-      const response = await axios.post(API_URL, {
-        message: text,
-        sender_id: senderIdRef.current,
-      });
-
-      const { detected_language, translated_input, bot_responses } =
-        response.data;
-
-      const botMessages = (bot_responses || []).map((r) => ({
-        role: "bot",
-        text: r,
-      }));
-
-      setMessages((prev) => [
-        ...prev,
-        ...(detected_language === "english"
-          ? [
-              {
-                role: "system",
-                text: `Translated to Lamnso: "${translated_input}"`,
-              },
-            ]
-          : []),
-        ...botMessages,
-      ]);
-    } catch (err) {
-      setError(
-        "Could not reach the chatbot. Please check your connection and try again."
-      );
-    } finally {
-      setIsSending(false);
+      detail = (await res.json()).detail || "";
+    } catch {
+      /* no JSON body */
     }
+    throw new Error(detail || `The service answered with an error (${res.status}).`);
   }
-
-  function handleKeyDown(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }
-
-  return (
-    <div className="flex min-h-screen flex-col bg-[#F7F1E8]">
-      {/* Header */}
-      <header className="border-b border-[#D8C9AE] bg-[#3A2E26] px-6 py-5 sm:px-10">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <div>
-            <h1 className="font-serif text-2xl tracking-tight text-[#F7F1E8]">
-              Muna
-            </h1>
-            <p className="mt-0.5 text-sm text-[#C9B79C]">
-              Someone to talk to, anytime.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/help"
-              className="text-sm text-[#E8DCC8] underline-offset-4 transition-colors hover:text-white hover:underline"
-            >
-              Get help
-            </Link>
-            <div className="flex items-center gap-2 rounded-full bg-[#4A3B30] px-3 py-1.5">
-              <span className="h-2 w-2 rounded-full bg-[#9CB380]" />
-              <span className="text-xs text-[#E8DCC8]">Private &amp; confidential</span>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Chat area */}
-      <main className="flex flex-1 justify-center px-4 py-6 sm:px-6">
-        <div className="flex w-full max-w-3xl flex-col">
-          <div
-            ref={scrollRef}
-            className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-[#E2D4BC] bg-white/60 p-4 sm:p-6"
-            style={{ maxHeight: "calc(100vh - 230px)", minHeight: "60vh" }}
-          >
-            {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} />
-            ))}
-
-            {isSending && (
-              <div className="flex items-center gap-2 pl-1">
-                <span className="flex gap-1">
-                  <Dot delay="0ms" />
-                  <Dot delay="150ms" />
-                  <Dot delay="300ms" />
-                </span>
-                <span className="text-sm text-[#8A7A63]">Muna is thinking…</span>
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <p className="mt-3 rounded-lg bg-[#F4DCD3] px-4 py-2 text-sm text-[#7A3B2E]">
-              {error}
-            </p>
-          )}
-
-          {/* Input bar */}
-          <div className="mt-4 flex items-end gap-3">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type in Lamnso or English…"
-              rows={1}
-              className="flex-1 resize-none rounded-xl border border-[#D8C9AE] bg-white px-4 py-3 text-[#3A2E26] placeholder:text-[#A99A82] focus:border-[#8C6D4F] focus:outline-none focus:ring-2 focus:ring-[#8C6D4F]/30"
-            />
-            <button
-              onClick={handleSend}
-              disabled={isSending || !input.trim()}
-              className="rounded-xl bg-[#8C6D4F] px-5 py-3 font-medium text-white transition-colors hover:bg-[#74573D] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Send
-            </button>
-          </div>
-
-          <p className="mt-3 text-center text-xs text-[#A99A82]">
-            If you are in danger right now, please reach out to someone you trust, or{" "}
-            <Link href="/help" className="underline hover:text-[#8C6D4F]">
-              see who else can help
-            </Link>
-            .
-          </p>
-        </div>
-      </main>
-    </div>
-  );
+  return res.json();
 }
 
-function MessageBubble({ message }) {
-  if (message.role === "system") {
+function Reply({ data, showEnglish }) {
+  if (data.route === "crisis") {
     return (
-      <p className="px-2 text-center text-xs italic text-[#A99A82]">
-        {message.text}
-      </p>
+      <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide">You are not alone</p>
+        {data.reply_lamnso && <p lang="lns" className="text-base font-medium">{data.reply_lamnso}</p>}
+        {data.reply_english && <p className="mt-2 text-sm">{data.reply_english}</p>}
+      </div>
     );
   }
-
-  const isUser = message.role === "user";
+  const pairs = data.sentences?.length ? data.sentences : [{ english: data.reply_english, lamnso: null }];
+  const anyLamnso = pairs.some((p) => p.lamnso);
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
-          isUser
-            ? "bg-[#8C6D4F] text-white"
-            : "bg-[#EFE6D4] text-[#3A2E26]"
-        }`}
-      >
-        {message.text}
-        {/* Voice playback: bot bubbles only (skip user + system lines) */}
-        {message.role === "bot" && <PlayVoiceButton text={message.text} />}
+    <div className="rounded-2xl rounded-tl-sm bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="space-y-2">
+        {pairs.map((p, i) => (
+          <div key={i}>
+            {p.lamnso && <p lang="lns" className="text-base font-medium text-slate-900">{p.lamnso}</p>}
+            {(showEnglish || !p.lamnso) && <p className="text-sm text-slate-600">{p.english}</p>}
+          </div>
+        ))}
       </div>
-    </div>
-  );
-}
-
-// On-demand voice playback for a single bot message.
-// - Synthesis is slow (~30s on CPU), so audio is generated only on click,
-//   never automatically.
-// - The generated audio is cached per bubble, so replaying is instant.
-// - Failures are non-fatal: the chat keeps working without voice.
-function PlayVoiceButton({ text }) {
-  const [status, setStatus] = useState("idle"); // idle | loading | playing | error
-  const audioUrlRef = useRef(null);
-  const audioRef = useRef(null);
-
-  useEffect(() => {
-    // Clean up the blob URL and any playing audio when unmounting.
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
-    };
-  }, []);
-
-  function playFrom(url) {
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    audio.onended = () => setStatus("idle");
-    audio.onerror = () => setStatus("error");
-    audio
-      .play()
-      .then(() => setStatus("playing"))
-      .catch(() => setStatus("error"));
-  }
-
-  async function handleClick() {
-    // If currently playing, stop.
-    if (status === "playing" && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setStatus("idle");
-      return;
-    }
-
-    // If already generated, replay from cache (instant).
-    if (audioUrlRef.current) {
-      playFrom(audioUrlRef.current);
-      return;
-    }
-
-    // Otherwise synthesize via the backend proxy.
-    setStatus("loading");
-    try {
-      const res = await axios.post(
-        TTS_URL,
-        { text },
-        { responseType: "blob", timeout: 200000 } // generous: cold CPU synth is slow
-      );
-      const url = URL.createObjectURL(res.data);
-      audioUrlRef.current = url;
-      playFrom(url);
-    } catch (err) {
-      setStatus("error");
-    }
-  }
-
-  const label =
-    status === "loading"
-      ? "Generating voice…"
-      : status === "playing"
-      ? "Stop"
-      : status === "error"
-      ? "Try again"
-      : "Play voice";
-
-  return (
-    <div className="mt-2 flex items-center gap-2">
-      <button
-        onClick={handleClick}
-        disabled={status === "loading"}
-        className="inline-flex items-center gap-1.5 rounded-full border border-[#D8C9AE] bg-white/70 px-3 py-1 text-xs font-medium text-[#6B5743] transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {status === "loading" ? (
-          <Spinner />
-        ) : status === "playing" ? (
-          <StopIcon />
-        ) : (
-          <PlayIcon />
-        )}
-        {label}
-      </button>
-      {status === "error" && (
-        <span className="text-xs text-[#9A6B5A]">Voice unavailable</span>
+      {!anyLamnso && data.route === "agent" && (
+        <p className="mt-3 text-xs text-slate-500">
+          I could not translate this reply into Lamnso reliably, so I am showing it in English only.
+        </p>
       )}
     </div>
   );
 }
 
-function PlayIcon() {
+function Meta({ data, onFeedback }) {
+  if (data.route === "crisis") return null;
+  const used = data.memories_used || [];
   return (
-    <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-      <path d="M2 1.5v9l8-4.5z" />
-    </svg>
+    <div className="mt-1 space-y-1 pl-1 text-xs text-slate-500">
+      <p>
+        {data.model_used ? <>Answered by <span className="font-mono">{data.model_used}</span></> : data.route.replaceAll("_", " ")}
+        {data.memory_enabled && <> · memory on, used {used.length} note{used.length === 1 ? "" : "s"}</>}
+      </p>
+      {data.ideas_used?.length > 0 && (
+        <p>From the care library: {data.ideas_used.map((i) => i.title).join(", ")}</p>
+      )}
+      {used.length > 0 && (
+        <details>
+          <summary className="cursor-pointer select-none">What I remembered</summary>
+          <ul className="mt-1 space-y-1">
+            {used.map((m) => (
+              <li key={m.id} className="flex items-center gap-2">
+                <span className="flex-1">{m.content}</span>
+                <button type="button" onClick={() => onFeedback(m.id, "helpful")} aria-label={`This note is right: ${m.content}`}
+                  className="rounded px-1.5 ring-1 ring-slate-300 hover:bg-slate-100">Right</button>
+                <button type="button" onClick={() => onFeedback(m.id, "wrong")} aria-label={`This note is wrong: ${m.content}`}
+                  className="rounded px-1.5 ring-1 ring-slate-300 hover:bg-slate-100">Wrong</button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }
 
-function StopIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-      <rect x="2" y="2" width="8" height="8" rx="1" />
-    </svg>
-  );
-}
+export default function Home() {
+  const [ready, setReady] = useState(false);
+  const [userId, setUserId] = useState("");
+  const [sessionId, setSessionId] = useState("");
+  const [memoryOn, setMemoryOn] = useState(false);
+  const [showEnglish, setShowEnglish] = useState(true);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notes, setNotes] = useState(null);
+  const endRef = useRef(null);
 
-function Spinner() {
-  return (
-    <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#C9B79C] border-t-[#6B5743]" />
-  );
-}
+  useEffect(() => {
+    let id = readStored("care_user_id", "");
+    if (!id) {
+      id = newId();
+      writeStored("care_user_id", id);
+    }
+    setUserId(id);
+    setSessionId(`s-${newId()}`);
+    setMemoryOn(readStored("care_memory", "0") === "1");
+    setShowEnglish(readStored("care_show_english", "1") === "1");
+    setReady(true);
+  }, []);
 
-function Dot({ delay }) {
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, busy]);
+
+  const addMessage = useCallback((m) => setMessages((prev) => [...prev, { id: newId(), ...m }]), []);
+
+  async function send(e) {
+    e?.preventDefault();
+    const text = input.trim();
+    if (!text || busy) return;
+    setInput("");
+    setError("");
+    addMessage({ role: "user", text });
+    setBusy(true);
+    try {
+      const data = await api("/chat", { message: text, session_id: sessionId, user_id: userId, remember: memoryOn });
+      addMessage({ role: "assistant", data });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function showNotes() {
+    setError("");
+    try {
+      setNotes((await api("/memory/export", { user_id: userId })).memories);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function forgetAll() {
+    if (!window.confirm("Erase everything I remember about you? This cannot be undone.")) return;
+    setError("");
+    try {
+      const { erased } = await api("/memory/forget", { user_id: userId });
+      setNotes(null);
+      addMessage({ role: "system", text: `Done. I erased ${erased} note${erased === 1 ? "" : "s"} about you.` });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function feedback(memoryId, kind) {
+    try {
+      await api("/memory/feedback", { user_id: userId, memory_id: memoryId, kind });
+      addMessage({ role: "system", text: kind === "wrong" ? "Thanks, I will trust that note less." : "Thanks, I will trust that note more." });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function checkin(mood) {
+    setError("");
+    try {
+      await api("/checkin", { user_id: userId, mood });
+      addMessage({ role: "system", text: "Check-in saved. Thank you for telling me." });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  const toggleMemory = (v) => { setMemoryOn(v); writeStored("care_memory", v ? "1" : "0"); };
+  const toggleEnglish = (v) => { setShowEnglish(v); writeStored("care_show_english", v ? "1" : "0"); };
+
   return (
-    <span
-      className="h-2 w-2 animate-bounce rounded-full bg-[#8C6D4F]"
-      style={{ animationDelay: delay }}
-    />
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-3 bg-slate-50 p-4 text-slate-900">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Lamnso Care Companion</h1>
+          <p className="text-sm text-slate-600">A gentle space to talk. Replies are written in English by an AI and translated into Lamnso.</p>
+        </div>
+        <Link href="/help" className="shrink-0 rounded-lg px-3 py-1.5 text-sm ring-1 ring-slate-300 hover:bg-white">Help</Link>
+      </header>
+
+      <p className="rounded-xl bg-slate-100 p-3 text-xs text-slate-600">
+        This is not a substitute for professional care. If you are in danger, contact your local emergency services.
+        For now please write in English. Machine translation can be imperfect, so the English is always available.
+      </p>
+
+      <section aria-label="Settings" className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-white p-3 text-sm ring-1 ring-slate-200">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={memoryOn} onChange={(e) => toggleMemory(e.target.checked)} className="h-4 w-4" />
+          Remember what helps me between visits
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={showEnglish} onChange={(e) => toggleEnglish(e.target.checked)} className="h-4 w-4" />
+          Show English under Lamnso
+        </label>
+        <span className="ml-auto flex gap-2">
+          <button type="button" onClick={showNotes} className="rounded-lg px-3 py-1 ring-1 ring-slate-300 hover:bg-slate-50">What do you remember?</button>
+          <button type="button" onClick={forgetAll} className="rounded-lg px-3 py-1 text-red-700 ring-1 ring-red-200 hover:bg-red-50">Forget me</button>
+        </span>
+        {memoryOn && (
+          <p className="basis-full text-xs text-slate-500">
+            Memory is on: after a normal reply I save one or two short, anonymous notes (never your exact words, never anything from a crisis message).
+          </p>
+        )}
+      </section>
+
+      <section aria-label="Mood check-in" className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 text-sm ring-1 ring-slate-200">
+        <span>How are you feeling right now?</span>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} type="button" onClick={() => checkin(n)}
+            aria-label={`Mood ${n} of 5${n === 1 ? ", very low" : n === 5 ? ", good" : ""}`}
+            className="h-8 w-8 rounded-full ring-1 ring-slate-300 hover:bg-slate-100">{n}</button>
+        ))}
+        <span className="text-xs text-slate-500">1 = very low, 5 = good. Saved under an anonymous key; &ldquo;Forget me&rdquo; erases it.</span>
+      </section>
+
+      {notes && (
+        <section aria-label="Remembered notes" className="rounded-xl bg-white p-3 text-sm ring-1 ring-slate-200">
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-medium">What I remember about you</h2>
+            <button type="button" onClick={() => setNotes(null)} className="text-xs text-slate-500 underline">Close</button>
+          </div>
+          {notes.length === 0 ? <p className="text-slate-500">Nothing yet.</p> : (
+            <ul className="list-disc space-y-1 pl-5">{notes.map((n) => <li key={n.id}>{n.content}</li>)}</ul>
+          )}
+        </section>
+      )}
+
+      <section aria-label="Conversation" aria-live="polite" className="flex flex-1 flex-col gap-3 overflow-y-auto py-2">
+        {ready && messages.length === 0 && (
+          <p className="m-auto max-w-sm text-center text-sm text-slate-500">
+            Tell me how you are feeling today. There is no rush.
+          </p>
+        )}
+        {messages.map((m) =>
+          m.role === "user" ? (
+            <div key={m.id} className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-slate-800 px-4 py-2 text-sm text-white">{m.text}</div>
+          ) : m.role === "system" ? (
+            <p key={m.id} className="text-center text-xs text-slate-500">{m.text}</p>
+          ) : (
+            <div key={m.id} className="max-w-[92%]">
+              <Reply data={m.data} showEnglish={showEnglish} />
+              <Meta data={m.data} onFeedback={feedback} />
+            </div>
+          )
+        )}
+        {busy && <p className="text-sm text-slate-500">Thinking…</p>}
+        <div ref={endRef} />
+      </section>
+
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 ring-1 ring-red-200">{error}</p>}
+
+      <form onSubmit={send} className="sticky bottom-0 flex items-end gap-2 bg-slate-50 pb-2">
+        <label htmlFor="msg" className="sr-only">Your message</label>
+        <textarea id="msg" value={input} onChange={(e) => setInput(e.target.value)} rows={2} maxLength={2000}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) send(e); }}
+          placeholder="Write how you feel… (Enter to send)"
+          className="flex-1 resize-none rounded-xl border-0 bg-white p-3 text-sm ring-1 ring-slate-300 focus:ring-2 focus:ring-slate-500" />
+        <button type="submit" disabled={busy || !input.trim()}
+          className="rounded-xl bg-slate-800 px-4 py-3 text-sm font-medium text-white disabled:opacity-40">Send</button>
+      </form>
+    </main>
   );
 }

@@ -7,6 +7,7 @@ jaydebeapi/JPype are imported lazily so SAMPLE_MODE and the tests need neither J
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -32,6 +33,7 @@ class ZetarisClient:
         self.user, self._password = user, password
         self._connect = connect  # injectable for tests
         self._conn = None
+        self._lock = threading.RLock()  # one JDBC connection, many request threads
 
     @classmethod
     def from_settings(cls, settings, connect: Optional[Callable[..., Any]] = None) -> "ZetarisClient":
@@ -66,6 +68,10 @@ class ZetarisClient:
     def query(self, sql: str) -> list[dict]:
         """Run one statement. Returns rows as dicts, or [] for statements that return nothing."""
         statement = _single_statement(sql)
+        with self._lock:
+            return self._run(statement)
+
+    def _run(self, statement: str) -> list[dict]:
         cur = self._ensure().cursor()
         try:
             cur.execute(statement)

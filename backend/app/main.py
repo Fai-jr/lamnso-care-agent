@@ -18,7 +18,9 @@ from backend.app.memory import SessionMemory
 from backend.app.nightshift import NightshiftClient, SampleNightshift
 from backend.app.pipeline import handle_message
 from backend.app.safety import load_verified_resources
+from backend.app.store import CHECKIN_TAGS, ZetarisStore
 from backend.app.trace import hash_session, write_trace
+from backend.app.zetaris import ZetarisClient, ZetarisError
 from translation.translator import LamnsoTranslator, SampleTranslator, TranslatorUnavailable
 
 
@@ -31,6 +33,8 @@ class Components:
     memory: SessionMemory
     resources: list
     hmem: Any = None
+    store: Any = None
+    store_error: Optional[str] = None
 
 
 @lru_cache(maxsize=1)
@@ -47,8 +51,14 @@ def get_components() -> Components:
             translator = LamnsoTranslator(s.weights_path, s.tokenizer_path)
         except TranslatorUnavailable as exc:
             terr = str(exc)  # app still answers in English; /health shows why
+    store, store_error = None, None
+    if not s.sample_mode:   # SAMPLE_MODE stays fully offline
+        try:
+            store = ZetarisStore(ZetarisClient.from_settings(s), s.zetaris_storage_path)
+        except ZetarisError as exc:
+            store_error = str(exc)   # the app still works; /health shows why Zetaris is off
     return Components(s, llm, translator, terr, SessionMemory(), load_verified_resources(s.resources_path),
-                      HmemClient(s.hmem_url, s.hmem_token))
+                      HmemClient(s.hmem_url, s.hmem_token), store, store_error)
 
 
 class ChatIn(BaseModel):
@@ -63,6 +73,11 @@ class ChatIn(BaseModel):
 class SentencePair(BaseModel):
     english: str
     lamnso: Optional[str] = None
+
+
+class IdeaUsed(BaseModel):
+    id: str
+    title: str
 
 
 class MemoryUsed(BaseModel):
@@ -80,6 +95,7 @@ class ChatOut(BaseModel):
     trace: list[str]
     sentences: list[SentencePair] = []
     memories_used: list[MemoryUsed] = []
+    ideas_used: list[IdeaUsed] = []
     memory_enabled: bool = False
     notice: str = "Not a substitute for professional care. In an emergency contact local emergency services."
 
@@ -94,11 +110,21 @@ def _learn_and_trace(c: "Components", key: str, user_text: str, reply_text: str,
     write_trace(c.settings.log_path, {"event": "learn", "session": hash_session(session), **result})
 
 
+def _log_to_zetaris(c: "Components", session: str, out: dict, memory_on: bool, in_chars: int) -> None:
+    try:
+        c.store.log_interaction(session=session, route=out["route"], model_used=out["model_used"],
+                                latency_ms=out["latency_ms"], translation_ok=out["translation_ok"], memory_on=memory_on,
+                                memories_used=len(out["memories_used"]), in_chars=in_chars)
+    except ZetarisError as exc:
+        write_trace(c.settings.log_path, {"event": "zetaris_log_failed", "reason": str(exc)[:120]})
+
+
 @app.post("/chat", response_model=ChatOut)
 def chat(body: ChatIn, background: BackgroundTasks, c: Components = Depends(get_components)) -> ChatOut:
     key = user_key(body.user_id or body.session_id) if body.remember else None
     out = handle_message(body.message, body.session_id, llm=c.llm, translator=c.translator,
-                         memory=c.memory, resources=c.resources, longterm=c.hmem if key else None, user_key=key)
+                         memory=c.memory, resources=c.resources, longterm=c.hmem if key else None, user_key=key,
+                         store=c.store, store_key=key)
     record = {"session": hash_session(body.session_id), "route": out["route"],
               "model_used": out["model_used"], "latency_ms": out["latency_ms"],
               "translation_ok": out["translation_ok"], "in_chars": len(body.message),
@@ -106,6 +132,8 @@ def chat(body: ChatIn, background: BackgroundTasks, c: Components = Depends(get_
     if c.settings.log_content:
         record.update(message=body.message, reply_english=out["reply_english"])
     write_trace(c.settings.log_path, record)
+    if c.store is not None:
+        background.add_task(_log_to_zetaris, c, hash_session(body.session_id), out, bool(key), len(body.message))
     # Learn only from normal replies, never from crisis or unsupported-language messages, and never before replying.
     if key and out["route"] == "agent" and out["reply_english"]:
         background.add_task(_learn_and_trace, c, key, body.message, out["reply_english"], body.session_id)
@@ -138,7 +166,15 @@ def memory_export(body: MemoryReq, c: Components = Depends(get_components)) -> d
 @app.post("/memory/forget")
 def memory_forget(body: MemoryReq, c: Components = Depends(get_components)) -> dict:
     """Erase everything remembered about this person, including the audit-trail copies."""
-    return {"erased": _memory_call(lambda: c.hmem.forget(user_key(body.user_id)))}
+    key = user_key(body.user_id)
+    result: dict = {"erased": _memory_call(lambda: c.hmem.forget(key))}
+    if c.store is not None:
+        try:
+            c.store.forget_checkins(key)
+            result["checkins_erased"] = True
+        except ZetarisError:
+            result["checkins_erased"] = False   # tell the person honestly instead of pretending
+    return result
 
 
 @app.post("/memory/feedback")
@@ -147,9 +183,42 @@ def memory_feedback(body: FeedbackReq, c: Components = Depends(get_components)) 
     return _memory_call(lambda: c.hmem.feedback(user_key(body.user_id), body.memory_id, body.kind))
 
 
+class CheckinReq(MemoryReq):
+    mood: int = Field(ge=1, le=5)
+    tag: Literal[CHECKIN_TAGS] = "other"  # type: ignore[valid-type]
+
+
+def _need_store(c: "Components") -> ZetarisStore:
+    if c.store is None:
+        raise HTTPException(status_code=503, detail="The data layer (Zetaris) is not connected.")
+    return c.store
+
+
+@app.post("/checkin")
+def checkin(body: CheckinReq, c: Components = Depends(get_components)) -> dict:
+    """Optional mood check-in (1 very low .. 5 good), stored in Zetaris under a hashed key."""
+    store = _need_store(c)
+    try:
+        store.add_checkin(user_key(body.user_id), body.mood, body.tag)
+    except ZetarisError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not save the check-in: {exc}") from exc
+    return {"saved": True}
+
+
+@app.get("/stats")
+def stats(c: Components = Depends(get_components)) -> dict:
+    """Which route and which model handled how many requests, read live from Zetaris."""
+    store = _need_store(c)
+    try:
+        return store.stats()
+    except ZetarisError as exc:
+        raise HTTPException(status_code=503, detail=f"Zetaris query failed: {exc}") from exc
+
+
 @app.get("/health")
 def health(c: Components = Depends(get_components)) -> dict:
     return {"sample_mode": c.settings.sample_mode, "nightshift": c.llm.health(),
             "translator": getattr(c.translator, "name", None), "translator_error": c.translator_error,
             "verified_crisis_resources": len(c.resources),
-            "hmem": c.hmem.health() if c.hmem else "off"}
+            "hmem": c.hmem.health() if c.hmem else "off",
+            "zetaris": c.store.health() if c.store else "off", "zetaris_error": c.store_error}

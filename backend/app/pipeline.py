@@ -15,6 +15,8 @@ from typing import Any, Optional, Protocol
 from backend.app.hmem_client import HmemError
 from backend.app.memory import SessionMemory
 from backend.app.nightshift import NightshiftError
+from backend.app.store import detect_topics
+from backend.app.zetaris import ZetarisError
 from backend.app.safety import crisis_response, is_crisis
 
 # Characters that appear in Lamnso tonal writing and never in plain English (from the original project).
@@ -33,6 +35,12 @@ MEMORY_INTRO = (
     "What you remember from earlier conversations with this person. Use it only if it is relevant right now, "
     "gently and in your own words. Never quote it, never say you have a memory system:\n"
 )
+
+IDEAS_INTRO = (
+    "Approved coping ideas from the care library. If one fits what the person said, you may gently offer at most "
+    "one, in your own words and short sentences. Do not suggest any other coping technique:\n"
+)
+TREND_INTRO = "Their recent mood check-ins (1 is very low, 5 is good): "
 
 SIMPLIFY_PROMPT = (
     "Please say that again in 2 very short, plain sentences of 8 words or fewer each. "
@@ -104,11 +112,11 @@ def looks_like_lamnso(text: str) -> bool:
 
 def handle_message(message: str, session_id: str, *, llm: Any, translator: Translator | None,
                    memory: SessionMemory, resources: list[dict], longterm: Any = None,
-                   user_key: str | None = None) -> dict:
+                   user_key: str | None = None, store: Any = None, store_key: str | None = None) -> dict:
     """Returns a dict with reply_lamnso, reply_english, route, model_used, translation_ok, trace."""
     message = message.strip()
     base: dict = {"reply_lamnso": None, "reply_english": None, "route": "", "model_used": None,
-                  "translation_ok": None, "latency_ms": 0, "trace": [], "sentences": [], "memories_used": []}
+                  "translation_ok": None, "latency_ms": 0, "trace": [], "sentences": [], "memories_used": [], "ideas_used": []}
 
     # 1. Safety first. No model, no translation, no network.
     if is_crisis(message):
@@ -133,9 +141,25 @@ def handle_message(message: str, session_id: str, *, llm: Any, translator: Trans
         except HmemError:
             base["trace"].append("hmem:unavailable")
     base["memories_used"] = [{"id": n.id, "content": n.content, "score": n.score} for n in notes]
+    ideas, trend = [], None
+    if store is not None:  # Zetaris is the data layer: vetted coping ideas, and (only with consent) the mood trend
+        try:
+            ideas = store.coping_ideas(detect_topics(message))
+            if store_key:
+                trend = store.mood_trend(store_key)
+            base["trace"].append(f"zetaris:{len(ideas)} coping idea(s)" + (", mood trend" if trend else ""))
+        except ZetarisError:
+            base["trace"].append("zetaris:unavailable")
+    base["ideas_used"] = [{"id": i["id"], "title": i["title"]} for i in ideas]
+
     system = [{"role": "system", "content": SYSTEM_PROMPT}]
     if notes:
         system.append({"role": "system", "content": MEMORY_INTRO + "\n".join(f"- {n.content}" for n in notes)})
+    if ideas:
+        system.append({"role": "system", "content": IDEAS_INTRO + "\n".join(f"- {i['title']}: {i['body']}" for i in ideas)})
+    if trend:
+        system.append({"role": "system", "content": TREND_INTRO + f"average {trend['average']} over {trend['count']} "
+                       f"check-in(s) in the last {trend['days']} days, lowest {trend['lowest']}. Mention it only if it helps."})
     messages = system + memory.recall(session_id) + [{"role": "user", "content": message}]
     try:
         result = llm.chat(messages)

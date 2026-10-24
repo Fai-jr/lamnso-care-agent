@@ -73,6 +73,7 @@ class Settings:
     zetaris_driver_class: str
     zetaris_jar_path: str
     zetaris_user: str
+    zetaris_storage_path: str
     zetaris_password: str = field(repr=False)
     hmem_url: str
     hmem_token: str = field(repr=False)
@@ -97,6 +98,7 @@ def get_settings() -> Settings:
         zetaris_driver_class=os.environ.get("ZETARIS_DRIVER_CLASS", "com.zetaris.lightning.jdbc.LightningDriver"),
         zetaris_jar_path=os.environ.get("ZETARIS_JAR_PATH", ""),
         zetaris_user=os.environ.get("ZETARIS_USER", ""),
+        zetaris_storage_path=os.environ.get("ZETARIS_STORAGE_PATH", "/home/zetaris/customer-data/shared/lamnso-lakehouse"),
         zetaris_password=os.environ.get("ZETARIS_PASSWORD", ""),
         hmem_url=os.environ.get("HMEM_URL", "http://127.0.0.1:8765"),
         hmem_token=os.environ.get("HMEM_TOKEN", ""),
