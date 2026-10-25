@@ -1,30 +1,17 @@
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata = {
-  title: "Muna — Lamnso Mental Health Support",
-  description:
-    "A confidential chatbot offering mental health support in Lamnso, the language of the Bui Division, North West Region, Cameroon.",
+  title: "Muna: a gentle space to talk",
+  description: "A calm companion for checking in on how you feel, in English and Lamnso.",
 };
 
+export const viewport = { width: "device-width", initialScale: 1, themeColor: "#E3EFE9" };
+
+// No web fonts are downloaded: the page uses the system's rounded font, so it also works offline.
 export default function RootLayout({ children }) {
   return (
-    <html lang="lns">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="en" data-theme="sage">
+      <body>{children}</body>
     </html>
   );
 }

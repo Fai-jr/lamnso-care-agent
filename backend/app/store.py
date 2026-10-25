@@ -27,7 +27,7 @@ TABLES: dict[str, str] = {
 
 TOPICS: dict[str, tuple[str, ...]] = {
     "sleep": ("sleep", "insomnia", "tired", "awake", "night", "nightmare"),
-    "anxiety": ("anxious", "anxiety", "worry", "worried", "nervous", "panic", "afraid", "scared", "fear"),
+    "anxiety": ("anxious", "anxiety", "worry", "worried", "nervous", "panic", "afraid", "scared", "fear", "breath"),
     "stress": ("stress", "overwhelm", "pressure", "exam", "deadline"),
     "low_mood": ("sad", "depress", "down", "hopeless", "empty", "cry", "unhappy"),
     "loneliness": ("alone", "lonely", "isolated", "nobody", "friendless"),

@@ -100,6 +100,10 @@ def test_detect_topics():
     assert detect_topics("I cannot sleep and I feel anxious") == ["sleep", "anxiety"]
     assert detect_topics("I feel so lonely") == ["loneliness"]
     assert detect_topics("what is the weather") == []
+    # the three suggestion pills on the first screen each find an idea
+    assert detect_topics("I feel stressed about school") == ["stress"]
+    assert detect_topics("Help me sleep better") == ["sleep"]
+    assert detect_topics("Guide me through breathing") == ["anxiety"]
     assert len(detect_topics("anxious sad alone tired stress")) == 2
 
 

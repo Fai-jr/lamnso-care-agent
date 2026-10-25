@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const APP_NAME = "Muna"; // change this one constant to rename the companion
 const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const SUGGESTIONS = ["I feel stressed about school", "Help me sleep better", "Guide me through breathing"];
 
 const newId = () =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
@@ -20,7 +22,7 @@ function writeStored(key, value) {
   try {
     window.localStorage.setItem(key, value);
   } catch {
-    /* private mode: the page still works, settings just are not remembered */
+    /* private mode: settings are simply not remembered */
   }
 }
 
@@ -42,17 +44,54 @@ async function api(path, body) {
     } catch {
       /* no JSON body */
     }
-    throw new Error(detail || `The service answered with an error (${res.status}).`);
+    throw new Error(typeof detail === "string" && detail ? detail : `The service answered with an error (${res.status}).`);
   }
   return res.json();
 }
 
+/* ---------- small original icons and mascot ---------- */
+function Avatar({ size = 64 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label={`${APP_NAME}, a friendly round companion`} className="muna-bob shrink-0">
+      <defs>
+        <radialGradient id="av" cx="35%" cy="30%" r="75%">
+          <stop offset="0%" stopColor="var(--avatar-1)" />
+          <stop offset="100%" stopColor="var(--avatar-2)" />
+        </radialGradient>
+      </defs>
+      <circle cx="32" cy="34" r="26" fill="url(#av)" />
+      <path d="M21 31 q3.5 -5 7 0" stroke="#17332d" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+      <path d="M36 31 q3.5 -5 7 0" stroke="#17332d" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+      <ellipse cx="19" cy="40" rx="4" ry="2.6" fill="#F7A8A8" opacity="0.7" />
+      <ellipse cx="45" cy="40" rx="4" ry="2.6" fill="#F7A8A8" opacity="0.7" />
+      <path d="M26 42 q6 6 12 0" stroke="#17332d" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+      <path d="M52 8 c-2.6 -4 -8 -1.6 -5.6 3 L52 17 l5.6 -6 c2.4 -4.6 -3 -7 -5.6 -3z" fill="#E5484D" />
+    </svg>
+  );
+}
+const MicIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </svg>
+);
+const SendIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </svg>
+);
+const GearIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+  </svg>
+);
+
+/* ---------- reply rendering ---------- */
 function Reply({ data, showEnglish }) {
   if (data.route === "crisis") {
     return (
-      <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide">You are not alone</p>
-        {data.reply_lamnso && <p lang="lns" className="text-base font-medium">{data.reply_lamnso}</p>}
+      <div role="alert" className="rounded-[20px] border border-amber-300 bg-amber-50 p-4 text-amber-950">
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide">You are not alone</p>
+        {data.reply_lamnso && <p lang="lns" className="text-base font-semibold">{data.reply_lamnso}</p>}
         {data.reply_english && <p className="mt-2 text-sm">{data.reply_english}</p>}
       </div>
     );
@@ -60,19 +99,17 @@ function Reply({ data, showEnglish }) {
   const pairs = data.sentences?.length ? data.sentences : [{ english: data.reply_english, lamnso: null }];
   const anyLamnso = pairs.some((p) => p.lamnso);
   return (
-    <div className="rounded-2xl rounded-tl-sm bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <div className="space-y-2">
+    <div className="muna-reply">
+      <div className="space-y-2.5">
         {pairs.map((p, i) => (
           <div key={i}>
-            {p.lamnso && <p lang="lns" className="text-base font-medium text-slate-900">{p.lamnso}</p>}
-            {(showEnglish || !p.lamnso) && <p className="text-sm text-slate-600">{p.english}</p>}
+            {p.lamnso && <p lang="lns" className="text-[17px] font-semibold leading-snug" style={{ color: "var(--heading)" }}>{p.lamnso}</p>}
+            {(showEnglish || !p.lamnso) && <p className="text-[15px]">{p.english}</p>}
           </div>
         ))}
       </div>
       {!anyLamnso && data.route === "agent" && (
-        <p className="mt-3 text-xs text-slate-500">
-          I could not translate this reply into Lamnso reliably, so I am showing it in English only.
-        </p>
+        <p className="mt-3 text-xs opacity-80">I could not translate this reply into Lamnso reliably, so I am showing it in English only.</p>
       )}
     </div>
   );
@@ -82,25 +119,21 @@ function Meta({ data, onFeedback }) {
   if (data.route === "crisis") return null;
   const used = data.memories_used || [];
   return (
-    <div className="mt-1 space-y-1 pl-1 text-xs text-slate-500">
+    <div className="mt-1.5 space-y-1 pl-1 text-xs opacity-90">
       <p>
         {data.model_used ? <>Answered by <span className="font-mono">{data.model_used}</span></> : data.route.replaceAll("_", " ")}
         {data.memory_enabled && <> · memory on, used {used.length} note{used.length === 1 ? "" : "s"}</>}
       </p>
-      {data.ideas_used?.length > 0 && (
-        <p>From the care library: {data.ideas_used.map((i) => i.title).join(", ")}</p>
-      )}
+      {data.ideas_used?.length > 0 && <p>From the care library: {data.ideas_used.map((i) => i.title).join(", ")}</p>}
       {used.length > 0 && (
         <details>
           <summary className="cursor-pointer select-none">What I remembered</summary>
-          <ul className="mt-1 space-y-1">
+          <ul className="mt-1 space-y-1.5">
             {used.map((m) => (
               <li key={m.id} className="flex items-center gap-2">
                 <span className="flex-1">{m.content}</span>
-                <button type="button" onClick={() => onFeedback(m.id, "helpful")} aria-label={`This note is right: ${m.content}`}
-                  className="rounded px-1.5 ring-1 ring-slate-300 hover:bg-slate-100">Right</button>
-                <button type="button" onClick={() => onFeedback(m.id, "wrong")} aria-label={`This note is wrong: ${m.content}`}
-                  className="rounded px-1.5 ring-1 ring-slate-300 hover:bg-slate-100">Wrong</button>
+                <button type="button" onClick={() => onFeedback(m.id, "helpful")} aria-label={`This note is right: ${m.content}`} className="muna-btn !min-h-8 !px-2.5 !py-1">Right</button>
+                <button type="button" onClick={() => onFeedback(m.id, "wrong")} aria-label={`This note is wrong: ${m.content}`} className="muna-btn !min-h-8 !px-2.5 !py-1">Wrong</button>
               </li>
             ))}
           </ul>
@@ -110,18 +143,96 @@ function Meta({ data, onFeedback }) {
   );
 }
 
+/* ---------- settings sheet ---------- */
+function Toggle({ checked, onChange, children }) {
+  return (
+    <label className="flex min-h-11 items-center gap-3">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-5 w-5" style={{ accentColor: "var(--accent)" }} />
+      <span>{children}</span>
+    </label>
+  );
+}
+
+function SettingsSheet({ open, onClose, theme, setTheme, memoryOn, setMemoryOn, showEnglish, setShowEnglish, notes, onShowNotes, onCloseNotes, onForget }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    closeRef.current?.focus();
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/30 sm:items-center" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Settings" onClick={(e) => e.stopPropagation()}
+        className="muna-card max-h-[88vh] w-full max-w-[480px] space-y-4 overflow-y-auto rounded-b-none p-6 sm:rounded-b-3xl">
+        <div className="flex items-center justify-between">
+          <h2 className="muna-heading">Settings</h2>
+          <button ref={closeRef} type="button" onClick={onClose} className="muna-btn">Close</button>
+        </div>
+
+        <fieldset>
+          <legend className="mb-1 text-sm font-semibold" style={{ color: "var(--heading)" }}>Colours</legend>
+          <div className="flex gap-2">
+            {[["sage", "Sage"], ["sky", "Sky"]].map(([id, label]) => (
+              <button key={id} type="button" aria-pressed={theme === id} onClick={() => setTheme(id)}
+                className="muna-btn" style={theme === id ? { background: "var(--accent)", color: "#fff" } : undefined}>{label}</button>
+            ))}
+          </div>
+        </fieldset>
+
+        <Toggle checked={showEnglish} onChange={setShowEnglish}>Show English under Lamnso</Toggle>
+        <div>
+          <Toggle checked={memoryOn} onChange={setMemoryOn}>Remember what helps me between visits</Toggle>
+          <p className="pl-8 text-xs opacity-90">
+            When on, after a normal reply I save one or two short, anonymous notes. Never your exact words, and never anything from a crisis message.
+            Turn it off any time.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onShowNotes} className="muna-btn">What do you remember?</button>
+          <button type="button" onClick={onForget} className="muna-btn muna-btn-danger">Forget me</button>
+        </div>
+
+        {notes && (
+          <section aria-label="Remembered notes" className="rounded-2xl p-3 text-sm" style={{ background: "var(--pill-bg)" }}>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="font-semibold" style={{ color: "var(--heading)" }}>What I remember about you</h3>
+              <button type="button" onClick={onCloseNotes} className="muna-link text-xs">Hide</button>
+            </div>
+            {notes.length === 0 ? <p>Nothing yet.</p> : <ul className="list-disc space-y-1 pl-5">{notes.map((n) => <li key={n.id}>{n.content}</li>)}</ul>}
+          </section>
+        )}
+
+        <p className="text-xs opacity-90">
+          {APP_NAME} is an AI companion, not a substitute for professional care. Replies are written in English and translated into Lamnso by a
+          machine model, so the English is always available. <Link href="/help" className="muna-link">Help and information</Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- page ---------- */
 export default function Home() {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState("");
   const [sessionId, setSessionId] = useState("");
-  const [memoryOn, setMemoryOn] = useState(false);
-  const [showEnglish, setShowEnglish] = useState(true);
+  const [theme, setThemeState] = useState("sage");
+  const [memoryOn, setMemoryOnState] = useState(false);
+  const [showEnglish, setShowEnglishState] = useState(true);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notes, setNotes] = useState(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [canDictate, setCanDictate] = useState(false);
+  const [listening, setListening] = useState(false);
   const endRef = useRef(null);
+  const recRef = useRef(null);
 
   useEffect(() => {
     let id = readStored("care_user_id", "");
@@ -131,8 +242,12 @@ export default function Home() {
     }
     setUserId(id);
     setSessionId(`s-${newId()}`);
-    setMemoryOn(readStored("care_memory", "0") === "1");
-    setShowEnglish(readStored("care_show_english", "1") === "1");
+    const t = readStored("care_theme", "sage");
+    setThemeState(t);
+    document.documentElement.dataset.theme = t;
+    setMemoryOnState(readStored("care_memory", "0") === "1");
+    setShowEnglishState(readStored("care_show_english", "1") === "1");
+    setCanDictate(Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
     setReady(true);
   }, []);
 
@@ -141,52 +256,25 @@ export default function Home() {
   }, [messages, busy]);
 
   const addMessage = useCallback((m) => setMessages((prev) => [...prev, { id: newId(), ...m }]), []);
+  const setTheme = (t) => { setThemeState(t); writeStored("care_theme", t); document.documentElement.dataset.theme = t; };
+  const setMemoryOn = (v) => { setMemoryOnState(v); writeStored("care_memory", v ? "1" : "0"); };
+  const setShowEnglish = (v) => { setShowEnglishState(v); writeStored("care_show_english", v ? "1" : "0"); };
 
-  async function send(e) {
-    e?.preventDefault();
-    const text = input.trim();
-    if (!text || busy) return;
+  async function send(text) {
+    const message = (text ?? input).trim();
+    if (!message || busy) return;
+    recRef.current?.stop();
     setInput("");
     setError("");
-    addMessage({ role: "user", text });
+    addMessage({ role: "user", text: message });
     setBusy(true);
     try {
-      const data = await api("/chat", { message: text, session_id: sessionId, user_id: userId, remember: memoryOn });
+      const data = await api("/chat", { message, session_id: sessionId, user_id: userId, remember: memoryOn });
       addMessage({ role: "assistant", data });
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function showNotes() {
-    setError("");
-    try {
-      setNotes((await api("/memory/export", { user_id: userId })).memories);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function forgetAll() {
-    if (!window.confirm("Erase everything I remember about you? This cannot be undone.")) return;
-    setError("");
-    try {
-      const { erased } = await api("/memory/forget", { user_id: userId });
-      setNotes(null);
-      addMessage({ role: "system", text: `Done. I erased ${erased} note${erased === 1 ? "" : "s"} about you.` });
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function feedback(memoryId, kind) {
-    try {
-      await api("/memory/feedback", { user_id: userId, memory_id: memoryId, kind });
-      addMessage({ role: "system", text: kind === "wrong" ? "Thanks, I will trust that note less." : "Thanks, I will trust that note more." });
-    } catch (err) {
-      setError(err.message);
     }
   }
 
@@ -200,99 +288,149 @@ export default function Home() {
     }
   }
 
-  const toggleMemory = (v) => { setMemoryOn(v); writeStored("care_memory", v ? "1" : "0"); };
-  const toggleEnglish = (v) => { setShowEnglish(v); writeStored("care_show_english", v ? "1" : "0"); };
+  async function showNotes() {
+    setError("");
+    try {
+      setNotes((await api("/memory/export", { user_id: userId })).memories);
+    } catch (err) {
+      setError(err.message);
+      setSheetOpen(false);
+    }
+  }
+
+  async function forgetAll() {
+    if (!window.confirm("Erase everything I remember about you, including mood check-ins? This cannot be undone.")) return;
+    setError("");
+    try {
+      const res = await api("/memory/forget", { user_id: userId });
+      setNotes(null);
+      setSheetOpen(false);
+      const extra = res.checkins_erased === false ? " I could not erase your mood check-ins right now; please try again later." : "";
+      addMessage({ role: "system", text: `Done. I erased ${res.erased} note${res.erased === 1 ? "" : "s"} about you.${extra}` });
+    } catch (err) {
+      setError(err.message);
+      setSheetOpen(false);
+    }
+  }
+
+  async function feedback(memoryId, kind) {
+    try {
+      await api("/memory/feedback", { user_id: userId, memory_id: memoryId, kind });
+      addMessage({ role: "system", text: kind === "wrong" ? "Thanks, I will trust that note less." : "Thanks, I will trust that note more." });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function toggleDictation() {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    if (readStored("care_voice_ok", "0") !== "1") {
+      const ok = window.confirm("Voice input uses your browser's speech service, which may send your voice to the company that makes your browser. Use it?");
+      if (!ok) return;
+      writeStored("care_voice_ok", "1");
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.onresult = (e) => setInput(Array.from(e.results).map((r) => r[0].transcript).join(" "));
+    rec.onend = () => setListening(false);
+    rec.onerror = () => { setListening(false); setError("I could not hear you. You can also type your message."); };
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  }
+
+  const started = messages.length > 0;
+  const hasText = input.trim().length > 0;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-3 bg-slate-50 p-4 text-slate-900">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Lamnso Care Companion</h1>
-          <p className="text-sm text-slate-600">A gentle space to talk. Replies are written in English by an AI and translated into Lamnso.</p>
+    <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col">
+      <header className="flex items-center justify-between px-6 pb-4 pt-9">
+        <h1 className="muna-title">{APP_NAME}</h1>
+        <div className="flex items-center gap-1">
+          {started && (
+            <button type="button" onClick={() => { setMessages([]); setError(""); setSessionId(`s-${newId()}`); }} className="muna-btn">New chat</button>
+          )}
+          <button type="button" onClick={() => setSheetOpen(true)} aria-label="Settings" className="grid h-11 w-11 place-items-center rounded-full" style={{ color: "var(--heading)" }}>
+            <GearIcon />
+          </button>
         </div>
-        <Link href="/help" className="shrink-0 rounded-lg px-3 py-1.5 text-sm ring-1 ring-slate-300 hover:bg-white">Help</Link>
       </header>
 
-      <p className="rounded-xl bg-slate-100 p-3 text-xs text-slate-600">
-        This is not a substitute for professional care. If you are in danger, contact your local emergency services.
-        For now please write in English. Machine translation can be imperfect, so the English is always available.
-      </p>
-
-      <section aria-label="Settings" className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-white p-3 text-sm ring-1 ring-slate-200">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={memoryOn} onChange={(e) => toggleMemory(e.target.checked)} className="h-4 w-4" />
-          Remember what helps me between visits
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={showEnglish} onChange={(e) => toggleEnglish(e.target.checked)} className="h-4 w-4" />
-          Show English under Lamnso
-        </label>
-        <span className="ml-auto flex gap-2">
-          <button type="button" onClick={showNotes} className="rounded-lg px-3 py-1 ring-1 ring-slate-300 hover:bg-slate-50">What do you remember?</button>
-          <button type="button" onClick={forgetAll} className="rounded-lg px-3 py-1 text-red-700 ring-1 ring-red-200 hover:bg-red-50">Forget me</button>
-        </span>
-        {memoryOn && (
-          <p className="basis-full text-xs text-slate-500">
-            Memory is on: after a normal reply I save one or two short, anonymous notes (never your exact words, never anything from a crisis message).
-          </p>
-        )}
-      </section>
-
-      <section aria-label="Mood check-in" className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 text-sm ring-1 ring-slate-200">
-        <span>How are you feeling right now?</span>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} type="button" onClick={() => checkin(n)}
-            aria-label={`Mood ${n} of 5${n === 1 ? ", very low" : n === 5 ? ", good" : ""}`}
-            className="h-8 w-8 rounded-full ring-1 ring-slate-300 hover:bg-slate-100">{n}</button>
-        ))}
-        <span className="text-xs text-slate-500">1 = very low, 5 = good. Saved under an anonymous key; &ldquo;Forget me&rdquo; erases it.</span>
-      </section>
-
-      {notes && (
-        <section aria-label="Remembered notes" className="rounded-xl bg-white p-3 text-sm ring-1 ring-slate-200">
-          <div className="mb-1 flex items-center justify-between">
-            <h2 className="font-medium">What I remember about you</h2>
-            <button type="button" onClick={() => setNotes(null)} className="text-xs text-slate-500 underline">Close</button>
-          </div>
-          {notes.length === 0 ? <p className="text-slate-500">Nothing yet.</p> : (
-            <ul className="list-disc space-y-1 pl-5">{notes.map((n) => <li key={n.id}>{n.content}</li>)}</ul>
-          )}
-        </section>
-      )}
-
-      <section aria-label="Conversation" aria-live="polite" className="flex flex-1 flex-col gap-3 overflow-y-auto py-2">
-        {ready && messages.length === 0 && (
-          <p className="m-auto max-w-sm text-center text-sm text-slate-500">
-            Tell me how you are feeling today. There is no rush.
-          </p>
-        )}
-        {messages.map((m) =>
-          m.role === "user" ? (
-            <div key={m.id} className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-slate-800 px-4 py-2 text-sm text-white">{m.text}</div>
-          ) : m.role === "system" ? (
-            <p key={m.id} className="text-center text-xs text-slate-500">{m.text}</p>
-          ) : (
-            <div key={m.id} className="max-w-[92%]">
-              <Reply data={m.data} showEnglish={showEnglish} />
-              <Meta data={m.data} onFeedback={feedback} />
+      <main className="flex-1 px-5 pb-44">
+        {ready && !started && (
+          <section className="muna-card p-6" aria-label={`Meet ${APP_NAME}`}>
+            <div className="flex items-center gap-4">
+              <Avatar />
+              <div>
+                <h2 className="muna-heading">Hi, I’m {APP_NAME}</h2>
+                <p className="mt-1 text-sm">I’m here to listen, check in on how you feel, and help you take a calm moment.</p>
+              </div>
             </div>
-          )
+            <div className="mt-5 flex flex-col gap-3">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} type="button" className="muna-pill" onClick={() => send(s)}>{s}</button>
+              ))}
+            </div>
+            <div className="mt-6 border-t pt-4" style={{ borderColor: "var(--pill-bg)" }}>
+              <p className="mb-2 text-sm font-semibold" style={{ color: "var(--heading)" }}>How are you feeling right now?</p>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} type="button" className="muna-chip" onClick={() => checkin(n)}
+                    aria-label={`Mood ${n} of 5${n === 1 ? ", very low" : n === 5 ? ", good" : ""}`}>{n}</button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs opacity-90">1 is very low, 5 is good. Saved under an anonymous key; “Forget me” erases it.</p>
+            </div>
+          </section>
         )}
-        {busy && <p className="text-sm text-slate-500">Thinking…</p>}
-        <div ref={endRef} />
-      </section>
 
-      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 ring-1 ring-red-200">{error}</p>}
+        <section aria-label="Conversation" aria-live="polite" className="flex flex-col gap-4">
+          {messages.map((m) =>
+            m.role === "user" ? (
+              <div key={m.id} className="muna-user ml-auto max-w-[85%] text-[15px]">{m.text}</div>
+            ) : m.role === "system" ? (
+              <p key={m.id} className="text-center text-xs opacity-90">{m.text}</p>
+            ) : (
+              <div key={m.id} className="max-w-[94%]">
+                <Reply data={m.data} showEnglish={showEnglish} />
+                <Meta data={m.data} onFeedback={feedback} />
+              </div>
+            )
+          )}
+          {busy && <p className="text-sm opacity-90">Thinking…</p>}
+          {error && <p role="alert" className="rounded-2xl bg-red-50 p-3 text-sm text-red-900 ring-1 ring-red-200">{error}</p>}
+          <div ref={endRef} />
+        </section>
+      </main>
 
-      <form onSubmit={send} className="sticky bottom-0 flex items-end gap-2 bg-slate-50 pb-2">
-        <label htmlFor="msg" className="sr-only">Your message</label>
-        <textarea id="msg" value={input} onChange={(e) => setInput(e.target.value)} rows={2} maxLength={2000}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) send(e); }}
-          placeholder="Write how you feel… (Enter to send)"
-          className="flex-1 resize-none rounded-xl border-0 bg-white p-3 text-sm ring-1 ring-slate-300 focus:ring-2 focus:ring-slate-500" />
-        <button type="submit" disabled={busy || !input.trim()}
-          className="rounded-xl bg-slate-800 px-4 py-3 text-sm font-medium text-white disabled:opacity-40">Send</button>
-      </form>
-    </main>
+      <div className="fixed inset-x-0 bottom-0 z-20">
+        <div className="mx-auto w-full max-w-[480px] px-5 pb-6">
+          <p className="mb-2 text-center text-[11px] opacity-90">
+            {APP_NAME} is an AI companion, not a substitute for professional care. In an emergency, contact your local emergency services.
+          </p>
+          <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-center gap-3">
+            <label htmlFor="msg" className="sr-only">Your message</label>
+            <input id="msg" className="muna-input" type="text" value={input} maxLength={2000} autoComplete="off"
+              onChange={(e) => setInput(e.target.value)} placeholder={`Tell ${APP_NAME} how you feel...`} />
+            {hasText || !canDictate ? (
+              <button type="submit" className="muna-fab" aria-label="Send message" disabled={busy || !hasText}><SendIcon /></button>
+            ) : (
+              <button type="button" className="muna-fab" onClick={toggleDictation} aria-pressed={listening}
+                aria-label={listening ? "Stop voice input" : "Speak your message"}><MicIcon /></button>
+            )}
+          </form>
+        </div>
+      </div>
+
+      <SettingsSheet open={sheetOpen} onClose={() => setSheetOpen(false)} theme={theme} setTheme={setTheme}
+        memoryOn={memoryOn} setMemoryOn={setMemoryOn} showEnglish={showEnglish} setShowEnglish={setShowEnglish}
+        notes={notes} onShowNotes={showNotes} onCloseNotes={() => setNotes(null)} onForget={forgetAll} />
+    </div>
   );
 }
