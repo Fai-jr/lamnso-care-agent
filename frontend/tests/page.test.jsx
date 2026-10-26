@@ -1,7 +1,7 @@
 import React from "react";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/link", () => ({ default: ({ href, children, ...p }) => <a href={href} {...p}>{children}</a> }));
 import Home from "../app/page.js";
@@ -30,6 +30,7 @@ function mockApi(handlers = {}) {
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.setItem("muna_splash_seen", "1"); // the splash has its own tests below
   document.documentElement.dataset.theme = "sage";
   window.confirm = vi.fn(() => true);
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -205,5 +206,75 @@ describe("voice input", () => {
     const user = await setup({});
     await user.click(screen.getByRole("button", { name: "Speak your message" }));
     expect(instance).toBeUndefined();
+  });
+});
+
+
+describe("splash screen and logo", () => {
+  const showSplash = () => { window.sessionStorage.clear(); mockApi({}); };
+  beforeEach(() => { showSplash(); vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); });
+  afterEach(() => { vi.useRealTimers(); });
+  const tick = (ms) => act(() => { vi.advanceTimersByTime(ms); });
+  const splashEl = () => screen.queryByRole("button", { name: /Muna, your calm companion/ });
+
+  it("shows the brand screen first, with the wordmark, tagline and logo", () => {
+    render(<Home />);
+    const splash = splashEl();
+    expect(splash).toBeTruthy();
+    expect(within(splash).getAllByText("Muna").length).toBeGreaterThan(0);        // wordmark and lockup
+    expect(within(splash).getByText("Your calm companion")).toBeTruthy();
+    expect(splash.querySelectorAll("svg").length).toBeGreaterThanOrEqual(3);      // heart, badge, lockup badge
+    expect(screen.queryByRole("heading", { name: /Hi, I’m Muna/ })).toBeNull();   // chat is hidden behind it
+    expect(document.querySelector("[inert]")).toBeTruthy();
+  });
+
+  it("stays between 3 and 5 seconds, then reveals the chat interface and remembers it for the session", () => {
+    render(<Home />);
+    tick(2900);
+    expect(splashEl()).toBeTruthy();                                              // still showing before 3 s
+    tick(900);                                                                    // 3.8 s: exit animation running
+    expect(splashEl().className).toContain("leaving");
+    tick(400);                                                                    // 4.2 s: gone
+    expect(splashEl()).toBeNull();
+    expect(screen.getByRole("heading", { name: /Hi, I’m Muna/ })).toBeTruthy();
+    expect(window.sessionStorage.getItem("muna_splash_seen")).toBe("1");
+    expect(document.querySelector("[inert]")).toBeNull();
+  });
+
+  it("can be skipped with a tap or with Enter / Escape", () => {
+    const { unmount } = render(<Home />);
+    fireEvent.click(splashEl());
+    tick(400);
+    expect(splashEl()).toBeNull();
+    unmount();
+    window.sessionStorage.clear();
+    render(<Home />);
+    fireEvent.keyDown(splashEl(), { key: "Escape" });
+    tick(400);
+    expect(splashEl()).toBeNull();
+  });
+
+  it("is not shown again in the same browser session", () => {
+    window.sessionStorage.setItem("muna_splash_seen", "1");
+    render(<Home />);
+    expect(splashEl()).toBeNull();
+    expect(screen.getByRole("heading", { name: /Hi, I’m Muna/ })).toBeTruthy();
+  });
+
+  it("shows the logo in the chat interface header next to the name", () => {
+    window.sessionStorage.setItem("muna_splash_seen", "1");
+    render(<Home />);
+    const header = document.querySelector("header");
+    const logo = header.querySelector("svg");
+    expect(logo).toBeTruthy();
+    expect(logo.getAttribute("aria-hidden")).toBe("true");                        // decorative: the name is the label
+    expect(within(header).getByRole("heading", { name: "Muna" })).toBeTruthy();
+    expect(logo.querySelector("path").getAttribute("d")).toContain("V71");        // the "m" glyph
+  });
+
+  it("gives each logo its own gradient ids, so several logos on one page cannot clash", () => {
+    render(<Home />);
+    const ids = Array.from(document.querySelectorAll("linearGradient, mask")).map((n) => n.getAttribute("id"));
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

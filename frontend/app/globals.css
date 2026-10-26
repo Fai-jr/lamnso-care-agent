@@ -85,3 +85,63 @@ body {
   .muna-bob, .muna-fab[aria-pressed="true"] { animation: none; }
   * { transition: none !important; }
 }
+
+/* ---------- Splash screen (Muna animation spec: 2400 ms choreography, then it waits, then exits) ---------- */
+.muna-splash {
+  --sp-badge: min(38vw, 168px);
+  --sp-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --sp-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: fixed; inset: 0; z-index: 50; overflow: hidden; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #fff; color: #1A2B4C;
+}
+.muna-splash::before {
+  content: ""; position: absolute; inset: 0; opacity: 0;
+  background: linear-gradient(180deg, #E8F0FC 0%, #DCE7F9 100%);
+  animation: sp-bg 600ms var(--sp-out) forwards;
+}
+.muna-splash > * { position: relative; }
+.muna-splash.leaving { animation: sp-leave-all 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.sp-stack { display: flex; flex-direction: column; align-items: center; text-align: center; }
+
+.sp-heart-wrap { height: 34px; margin-bottom: 8px; animation: sp-heart-pop 700ms var(--sp-out) 600ms both; }
+.sp-heart { animation: sp-heart-float 3.2s ease-in-out 1300ms infinite; }
+.sp-badge-wrap { animation: sp-badge-in 800ms var(--sp-spring) 300ms both; }
+.leaving .sp-badge-wrap { animation: sp-badge-out 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.sp-badge { border-radius: 28%; box-shadow: 0 16px 36px rgba(50, 95, 185, 0.16); animation: sp-breathe 4s ease-in-out 1100ms infinite; }
+
+.sp-word { margin-top: 28px; font-size: 38px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; color: #1A2B4C;
+  animation: sp-rise 500ms var(--sp-out) 900ms both; }
+.sp-tag { margin-top: 10px; font-size: 18px; font-weight: 400; letter-spacing: -0.01em; color: #4F678E;
+  animation: sp-rise-s 500ms var(--sp-out) 1100ms both; }
+.sp-divider { margin-top: 28px; width: min(60vw, 220px); height: 1px; background: rgba(74, 115, 190, 0.22);
+  transform-origin: center; animation: sp-divider 600ms cubic-bezier(0.25, 1, 0.5, 1) 1400ms both; }
+.sp-lockup { position: absolute; bottom: 56px; display: flex; align-items: center; gap: 12px;
+  font-size: 26px; font-weight: 500; letter-spacing: -0.015em; color: #1A2B4C; animation: sp-fade 500ms ease 1700ms both; }
+.leaving .sp-lockup { animation: sp-lockup-out 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.muna-shine { animation: muna-shine 5s ease-in-out 1800ms infinite; }
+
+@keyframes sp-bg { to { opacity: 1; } }
+@keyframes sp-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sp-leave-all { to { opacity: 0; } }
+@keyframes sp-badge-in { from { opacity: 0; transform: translateY(32px) scale(0.85); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes sp-badge-out { to { opacity: 0; transform: scale(1.08); } }
+@keyframes sp-breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 16px 36px rgba(50, 95, 185, 0.16); }
+  50% { transform: scale(1.025); box-shadow: 0 20px 44px rgba(50, 95, 185, 0.24); }
+}
+@keyframes sp-heart-pop { 0% { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.15); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes sp-heart-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-5px) rotate(2deg); } }
+@keyframes sp-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sp-rise-s { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sp-divider { from { opacity: 0; transform: scaleX(0); } to { opacity: 1; transform: scaleX(1); } }
+@keyframes sp-lockup-out { to { opacity: 0; transform: translateY(24px); } }
+@keyframes muna-shine { 0% { transform: translateX(0); } 40%, 100% { transform: translateX(130px); } }
+
+/* Reduced motion: one clean crossfade, no springs, no looping idle animation */
+@media (prefers-reduced-motion: reduce) {
+  .muna-splash { animation: sp-fade 300ms ease both; }
+  .muna-splash.leaving { animation: sp-leave-all 300ms ease forwards; }
+  .muna-splash::before { animation: none; opacity: 1; }
+  .muna-splash *, .muna-shine { animation: none !important; }
+}

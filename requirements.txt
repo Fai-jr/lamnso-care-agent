@@ -1,11 +1,18 @@
-# --- app (needed in every mode, including SAMPLE_MODE=true) ---
+# Full install: real translator + Zetaris data layer. For a quick look without keys use requirements-sample.txt.
+
+# --- app (needed in every mode) ---
 fastapi>=0.110
 uvicorn>=0.29
 httpx>=0.27
 pydantic>=2
 pytest>=8
 
-# --- real Lamnso translator (not needed for SAMPLE_MODE). CPU-only torch is fine:
+# --- real Lamnso translator. CPU-only torch is enough and much smaller:
 #     pip install torch --index-url https://download.pytorch.org/whl/cpu
 torch>=2.2
 sentencepiece>=0.2
+numpy>=1.26
+
+# --- Zetaris over JDBC (needs Java 8 or newer on the machine) ---
+JayDeBeApi>=1.2.3
+JPype1>=1.5

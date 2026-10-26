@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 const APP_NAME = "Muna"; // change this one constant to rename the companion
 const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const SPLASH_MS = 3600; // shown for 3.6 s, then a 0.4 s exit: about 4 s in total
 const SUGGESTIONS = ["I feel stressed about school", "Help me sleep better", "Guide me through breathing"];
 
 const newId = () =>
@@ -23,6 +24,21 @@ function writeStored(key, value) {
     window.localStorage.setItem(key, value);
   } catch {
     /* private mode: settings are simply not remembered */
+  }
+}
+
+function readSession(key) {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeSession(key, value) {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    /* private mode: the splash simply shows again next time */
   }
 }
 
@@ -84,6 +100,88 @@ const GearIcon = () => (
     <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
   </svg>
 );
+
+/* ---------- brand logo: periwinkle badge with a white lowercase "m" ---------- */
+const M_PATH = "M27 71 V41 M27 53 C27 44 32 39 39 39 C46 39 50 44 50 52 V71 M50 52 C50 44 55 39 62 39 C69 39 73 44 73 52 V71";
+
+function Logo({ size = 36, shimmer = false }) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  return (
+    <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false" className="block shrink-0" style={{ width: size, height: size }}>
+      <defs>
+        <linearGradient id={`lg${uid}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#5786E4" />
+          <stop offset="1" stopColor="#4373CE" />
+        </linearGradient>
+        {shimmer && (
+          <>
+            <mask id={`lm${uid}`} maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+              <path d={M_PATH} fill="none" stroke="#fff" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" />
+            </mask>
+            <linearGradient id={`ls${uid}`} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#fff" stopOpacity="0" />
+              <stop offset="0.5" stopColor="#CFE0FF" stopOpacity="0.95" />
+              <stop offset="1" stopColor="#fff" stopOpacity="0" />
+            </linearGradient>
+          </>
+        )}
+      </defs>
+      <rect width="100" height="100" rx="28" fill={`url(#lg${uid})`} />
+      <path d={M_PATH} fill="none" stroke="#fff" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" />
+      {shimmer && (
+        <g mask={`url(#lm${uid})`}>
+          <g transform="skewX(-18)">
+            <rect className="muna-shine" x="-40" y="20" width="36" height="60" fill={`url(#ls${uid})`} />
+          </g>
+        </g>
+      )}
+    </svg>
+  );
+}
+
+function Heart({ size = 30 }) {
+  return (
+    <svg viewBox="0 0 32 28" aria-hidden="true" focusable="false" className="block" style={{ width: size, height: (size * 28) / 32 }}>
+      <path d="M16 26 C6 18 2 13 2 8.5 C2 4.6 5 2 8.4 2 C11.6 2 14.4 3.8 16 6.6 C17.6 3.8 20.4 2 23.6 2 C27 2 30 4.6 30 8.5 C30 13 26 18 16 26 Z" fill="#F88D7A" />
+    </svg>
+  );
+}
+
+/* ---------- splash: brand intro, then the chat. Tap, Enter, Space or Escape skips it. ---------- */
+function Splash({ onDone }) {
+  const [leaving, setLeaving] = useState(false);
+  const ref = useRef(null);
+  const leave = useCallback(() => setLeaving(true), []);
+  useEffect(() => {
+    ref.current?.focus();
+    const t = setTimeout(leave, SPLASH_MS);
+    return () => clearTimeout(t);
+  }, [leave]);
+  useEffect(() => {
+    if (!leaving) return undefined;
+    const t = setTimeout(onDone, 400);
+    return () => clearTimeout(t);
+  }, [leaving, onDone]);
+  return (
+    <div ref={ref} role="button" tabIndex={0} aria-label={`${APP_NAME}, your calm companion. Press to continue.`}
+      className={`muna-splash${leaving ? " leaving" : ""}`} onClick={leave}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+          e.preventDefault();
+          leave();
+        }
+      }}>
+      <div className="sp-stack">
+        <div className="sp-heart-wrap"><div className="sp-heart"><Heart /></div></div>
+        <div className="sp-badge-wrap"><div className="sp-badge"><Logo size="var(--sp-badge)" shimmer /></div></div>
+        <p className="sp-word">{APP_NAME}</p>
+        <p className="sp-tag">Your calm companion</p>
+        <div className="sp-divider" />
+      </div>
+      <div className="sp-lockup"><Logo size={48} /><span>{APP_NAME}</span></div>
+    </div>
+  );
+}
 
 /* ---------- reply rendering ---------- */
 function Reply({ data, showEnglish }) {
@@ -218,6 +316,7 @@ function SettingsSheet({ open, onClose, theme, setTheme, memoryOn, setMemoryOn, 
 /* ---------- page ---------- */
 export default function Home() {
   const [ready, setReady] = useState(false);
+  const [splash, setSplash] = useState("pending"); // pending | show | done
   const [userId, setUserId] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [theme, setThemeState] = useState("sage");
@@ -248,6 +347,7 @@ export default function Home() {
     setMemoryOnState(readStored("care_memory", "0") === "1");
     setShowEnglishState(readStored("care_show_english", "1") === "1");
     setCanDictate(Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
+    setSplash(readSession("muna_splash_seen") === "1" ? "done" : "show");
     setReady(true);
   }, []);
 
@@ -255,6 +355,10 @@ export default function Home() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, busy]);
 
+  const finishSplash = useCallback(() => {
+    writeSession("muna_splash_seen", "1");
+    setSplash("done");
+  }, []);
   const addMessage = useCallback((m) => setMessages((prev) => [...prev, { id: newId(), ...m }]), []);
   const setTheme = (t) => { setThemeState(t); writeStored("care_theme", t); document.documentElement.dataset.theme = t; };
   const setMemoryOn = (v) => { setMemoryOnState(v); writeStored("care_memory", v ? "1" : "0"); };
@@ -348,10 +452,17 @@ export default function Home() {
   const started = messages.length > 0;
   const hasText = input.trim().length > 0;
 
+  if (splash === "pending") return <div className="min-h-screen" aria-hidden="true" />;
+
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col">
+    <>
+    {splash === "show" && <Splash onDone={finishSplash} />}
+    <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col" inert={splash === "show" ? true : undefined} aria-hidden={splash === "show" ? true : undefined}>
       <header className="flex items-center justify-between px-6 pb-4 pt-9">
-        <h1 className="muna-title">{APP_NAME}</h1>
+        <div className="flex items-center gap-2.5">
+          <Logo size={36} />
+          <h1 className="muna-title">{APP_NAME}</h1>
+        </div>
         <div className="flex items-center gap-1">
           {started && (
             <button type="button" onClick={() => { setMessages([]); setError(""); setSessionId(`s-${newId()}`); }} className="muna-btn">New chat</button>
@@ -432,5 +543,6 @@ export default function Home() {
         memoryOn={memoryOn} setMemoryOn={setMemoryOn} showEnglish={showEnglish} setShowEnglish={setShowEnglish}
         notes={notes} onShowNotes={showNotes} onCloseNotes={() => setNotes(null)} onForget={forgetAll} />
     </div>
+    </>
   );
 }
