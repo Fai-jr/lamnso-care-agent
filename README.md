@@ -1,17 +1,47 @@
-# Muna: a gentle space to talk, in English and Lamnso
+<div align="center">
 
-Muna is a mental-wellbeing companion for people who speak **Lamnso**, a language of Cameroon with almost no
-digital mental-health support. A modern LLM writes a kind, short reply in English; the project's **own
-English to Lamnso transformer** (trained before this hackathon) translates it sentence by sentence, and shows
-the English underneath so nobody is left with a bad translation.
+<!-- Add a banner at docs/banner.png, then uncomment the next line:
+![Muna Banner](docs/banner.png)
+-->
+
+# Muna
+
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-UI-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![PyTorch](https://img.shields.io/badge/PyTorch-translator-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org)
+[![Zetaris](https://img.shields.io/badge/Zetaris-data_layer-5B3FD0?style=flat-square)](https://www.zetaris.com)
+[![Meterless](https://img.shields.io/badge/Meterless-H--MEM_engine-1F2937?style=flat-square)](https://meterless.ai)
+[![NVIDIA Nemotron](https://img.shields.io/badge/NVIDIA-Nemotron_3.5_Lightning-76B900?style=flat-square&logo=nvidia&logoColor=white)](https://build.nvidia.com)
+[![Tests](https://img.shields.io/badge/pytest-79_passed-2EAD33?style=flat-square)](#tests-and-evidence)
+
+**A gentle space to talk, in English and Lamnso.**<br/>
+Muna answers kindly, translates sentence by sentence, and always shows the English underneath.
+
+*Built for the **Open Agent Hackathon 2026***
+
+</div>
+
+---
 
 > **Muna is not therapy and not a substitute for professional care.** In an emergency contact your local
 > emergency services. See [Safety and privacy](#safety-and-privacy) for exactly what the app does and does not do.
 
-Built for the **Open Agent Hackathon 2026** with **Zetaris** (data layer), **Meterless** (H-MEM engine and
-provider contract) and **NVIDIA Nemotron** (the model that writes the replies).
+---
 
-## How it works
+## Overview
+
+Muna is a mental-wellbeing companion for people who speak **Lamnso**, a language of Cameroon with almost no digital
+mental-health support. A modern LLM writes a kind, short reply in English. The project's **own English to Lamnso
+transformer** (trained before this hackathon) translates it sentence by sentence and shows the English underneath, so
+nobody is left with a bad translation.
+
+It is built on three sponsor technologies: **Zetaris** (data layer), **Meterless** (H-MEM engine and provider
+contract) and **NVIDIA Nemotron** (the model that writes the replies).
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -27,6 +57,19 @@ flowchart LR
   API -.background.-> W["H-MEM: write short notes"]
 ```
 
+Muna has four layers. The **Next.js UI** takes the message and shows the reply. The **FastAPI backend** runs the safety
+check first, then routes the message through memory, data and model steps. **Zetaris** and **Meterless H-MEM** supply
+the data layer and the opt-in memory. **Nemotron** writes the English reply and the project's **own transformer**
+translates it into Lamnso. A crisis message never reaches a model: it gets fixed, pre-written text.
+
+Details of how each sponsor technology is used: **[`docs/SPONSOR_TECHNOLOGY.md`](docs/SPONSOR_TECHNOLOGY.md)**.
+
+---
+
+## Request Pipeline
+
+Every message goes through seven steps.
+
 | Step | What happens | Where |
 |---|---|---|
 | 1. Safety first | A keyword net checks the raw text (English and Lamnso) before anything else. A hit returns fixed, pre-written text. No model is called. | `translation/crisis_safety.py`, `backend/app/safety.py` |
@@ -37,51 +80,63 @@ flowchart LR
 | 6. Translate | Each sentence is translated alone. Empty or looping output is caught, one simpler retry is made, and Lamnso is shown only if every sentence is usable. | `translation/translator.py` |
 | 7. Learn and log (background) | Zetaris logs route, model and latency. If memory is on, the model writes up to two anonymous, paraphrased notes. | `backend/app/learning.py` |
 
-## Quick start (about two minutes, no keys)
+### Routing logic
 
-`SAMPLE_MODE=true` runs everything offline with clearly labelled stand-ins: a canned reply, a placeholder
-translation (prefixed `[sample-lamnso]`), no Zetaris. Use it to look around.
-
-```bash
-git clone https://github.com/Fai-jr/lamnso-care-agent.git && cd lamnso-care-agent
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-sample.txt
-cp .env.example .env                 # SAMPLE_MODE=true is the default
-WITH_UI=1 bash scripts/run_dev.sh    # memory service + backend + UI
+```
+User sends a message
+    │
+    ▼
+safety check (raw text, English + Lamnso)
+    │
+    ├── crisis keyword hit     → fixed crisis reply (route: "crisis", no model, no network)
+    ├── Lamnso input           → "please write in English for now"
+    └── everyday message       → memory → Zetaris → Nemotron → transformer → reply (route: "agent")
 ```
 
-Open **http://localhost:3001**. Needs Python 3.10+ and Node 18+ (the script installs the Node dependencies on first run).
-Backend API docs: http://127.0.0.1:8000/docs.
+---
 
-## Full setup (real model, real translator, Zetaris)
+## Session Lifecycle
 
-1. **Install everything**
-   ```bash
-   pip install -r requirements.txt     # large: torch. CPU only is enough:
-   # pip install torch --index-url https://download.pytorch.org/whl/cpu
-   ```
-   Java 8 or newer is needed for the Zetaris driver.
-2. **Model provider.** Create a free key at build.nvidia.com (Nemotron 3.5 Lightning) and put it in `.env`:
-   ```
-   METERLESS_BASE_URL=https://integrate.api.nvidia.com/v1
-   METERLESS_RUNTIME_TOKEN=<your key>
-   METERLESS_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
-   METERLESS_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}
-   ```
-   With a Meterless Runtime (Nightshift) these become `http://127.0.0.1:8088/v1`, the runtime token and `meterless/auto`;
-   no code changes. Check the connection: `python scripts/check_nightshift.py`.
-3. **Translator weights** (32 MB, checksum-verified): `python -m translation.download_weights`
-4. **Zetaris.** Start the Zetaris hackathon stack (its own guide), then set `ZETARIS_JAR_PATH`, `ZETARIS_USER`,
-   `ZETARIS_PASSWORD` in `.env` and run:
-   ```bash
-   python scripts/check_zetaris.py                 # SELECT 1
-   python scripts/setup_zetaris.py --selftest      # datalake, 3 tables, 6 seed rows; safe to repeat
-   ```
-5. **Switch the real services on and run:** set `SAMPLE_MODE=false` in `.env`, then `WITH_UI=1 bash scripts/run_dev.sh`.
+```
+User opens Muna in the browser
+  → 4-second splash (logo, tagline); tap, Enter or Escape skips it. Once per browser session.
+  → Optional: taps 1 to 5 under "How are you feeling right now?"
+      → Mood check-in stored in Zetaris under an anonymous key
+  → Types a message, or taps a suggestion
+      → POST /chat → safety check runs first
+      → Opt-in memory recalled from H-MEM (if switched on)
+      → Zetaris coping ideas (and mood trend, with consent) added to the prompt
+      → Nemotron writes the English reply; the model that answered is recorded
+      → Own transformer translates each sentence to Lamnso
+      → UI shows Lamnso with English underneath, and "Answered by <model>"
+  → Background, after the reply
+      → Zetaris logs route, model and latency
+      → If memory is on: up to two anonymous, paraphrased notes written to H-MEM
+  → Settings (gear)
+      → "Remember what helps me" switches memory on (off by default)
+      → "What do you remember?" lists every stored note in plain words
+      → "Forget me" erases notes and mood check-ins
+```
 
-The UI is at http://localhost:3001 (Zetaris itself uses port 3000). `GET /health` shows what is connected.
+---
 
-## Using it
+## Memory System
+
+Memory is **off by default**. When the person turns it on, Muna remembers short notes, not conversations.
+
+| Stored ✅ | Not stored ❌ |
+|---|---|
+| Short, model-written paraphrased notes (opt-in only) | The person's raw messages |
+| Mood check-ins, under an anonymous key | Anything from a crisis message |
+| Route, model, latency and lengths in the trace log | Message text in logs (unless `LOG_CONTENT=true`, synthetic demo data only) |
+| | Notes that look like emails, links, phone numbers or instructions (the service rejects them) |
+
+"Forget me" deletes notes (also from the audit log and in-memory backups) and mood check-ins. If check-ins cannot be
+erased the app says so.
+
+---
+
+## Using Muna
 
 | Do this | You get |
 |---|---|
@@ -98,10 +153,12 @@ The UI is at http://localhost:3001 (Zetaris itself uses port 3000). `GET /health
 `POST /chat` `{message, session_id, user_id?, remember?}` · `POST /checkin` · `POST /memory/export|forget|feedback` ·
 `GET /stats` · `GET /health`. Interactive docs at `/docs`.
 
-## Sample inputs and outputs
+---
+
+## Sample Inputs and Outputs
 
 Real runs against `nvidia/nemotron-3.5-lightning-30b-a3b`. The Lamnso is machine output and has **not** been
-verified by a fluent speaker (see [Known limitations](#known-limitations)).
+verified by a fluent speaker (see [Known Limitations](#known-limitations)).
 
 | Input | English reply | Lamnso (machine translation) |
 |---|---|---|
@@ -133,7 +190,144 @@ session 2  "It is night again and I am anxious"          -> memories_used:
 {"total_requests":1,"by_route_and_model":[{"route":"agent","model_used":"nvidia/nemotron-3.5-lightning-30b-a3b","requests":1,"avg_latency_ms":1765,"translated":1}]}
 ```
 
-## Tests and evidence
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Reply model | NVIDIA Nemotron 3.5 Lightning (`nvidia/nemotron-3.5-lightning-30b-a3b`) |
+| Provider client | Meterless Runtime (Nightshift) provider contract, OpenAI-compatible |
+| Translation | Own English to Lamnso transformer (PyTorch, CPU is enough), 32 MB weights |
+| Memory engine | Meterless H-MEM, vendored in `engines/hmem` (Node 18+) |
+| Data layer | Zetaris hackathon stack (Docker), JDBC driver (Java 8+) |
+| Backend | FastAPI, Python 3.10+ |
+| Frontend | Next.js |
+| Tests | pytest, Node test runner, vitest + jsdom |
+
+---
+
+## Project Structure
+
+```
+lamnso-care-agent/
+├── backend/app/
+│   ├── pipeline.py            # Orchestrator: safety, language gate, memory, data, reply, translate
+│   ├── safety.py              # Crisis path (fixed text, no model)
+│   ├── hmem_client.py         # Client for the H-MEM service
+│   ├── store.py               # Zetaris data layer
+│   ├── nightshift.py          # Meterless-style provider client
+│   └── learning.py            # Background logging and note writing
+├── engines/hmem/              # Meterless H-MEM: reference core, care-domain embedder,
+│                              #   privacy layer, HTTP service, tests
+├── translation/
+│   ├── translator.py          # Per-sentence wrapper with retry and withholding
+│   ├── crisis_safety.py       # Crisis keyword net (English + Lamnso)
+│   └── download_weights.py    # Checksum-verified weights downloader
+├── frontend/                  # Next.js UI (two colour variants, splash screen, logo)
+├── scripts/
+│   ├── run_dev.sh
+│   ├── setup_zetaris.py
+│   ├── check_zetaris.py
+│   ├── check_nightshift.py
+│   └── export_translations_for_review.py
+├── sample_data/               # crisis_resources.json (verified contacts only)
+├── legacy/                    # Pre-existing components, declared in PRE_EXISTING.md
+└── docs/                      # Sponsor explanation, demo script, deck outline,
+                               #   submission checklist, evidence
+```
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.10+ | Backend runtime |
+| Node.js | 18+ | H-MEM service and UI (installed on first run by `scripts/run_dev.sh`) |
+| Java | 8+ | Zetaris JDBC driver, full mode only |
+| Zetaris hackathon stack (Docker) | n/a | Full mode only. Port 3000 (its UI), 10000 (JDBC) |
+| NVIDIA API key | n/a | Free at build.nvidia.com. Never commit it. |
+
+---
+
+### Try it in two minutes (sample mode, no keys)
+
+`SAMPLE_MODE=true` runs everything offline with clearly labelled stand-ins: a canned reply, a placeholder
+translation (prefixed `[sample-lamnso]`), and no Zetaris. Use it to look around.
+
+```bash
+git clone https://github.com/Fai-jr/lamnso-care-agent.git && cd lamnso-care-agent
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-sample.txt
+cp .env.example .env                 # SAMPLE_MODE=true is the default
+WITH_UI=1 bash scripts/run_dev.sh    # memory service + backend + UI
+```
+
+Open **http://localhost:3001**. Backend API docs: http://127.0.0.1:8000/docs.
+
+---
+
+### Full setup (real model, real translator, Zetaris)
+
+#### 1 — Install everything
+
+```bash
+pip install -r requirements.txt     # large: torch. CPU only is enough:
+# pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+Java 8 or newer is needed for the Zetaris driver.
+
+#### 2 — Model provider
+
+Create a free key at build.nvidia.com (Nemotron 3.5 Lightning) and put it in `.env`:
+
+```env
+METERLESS_BASE_URL=https://integrate.api.nvidia.com/v1
+METERLESS_RUNTIME_TOKEN=<your key>
+METERLESS_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+METERLESS_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}
+```
+
+With a Meterless Runtime (Nightshift) these become `http://127.0.0.1:8088/v1`, the runtime token and `meterless/auto`,
+with no code changes. Check the connection:
+
+```bash
+python scripts/check_nightshift.py
+```
+
+#### 3 — Translator weights (32 MB, checksum-verified)
+
+```bash
+python -m translation.download_weights
+```
+
+#### 4 — Zetaris
+
+Start the Zetaris hackathon stack (its own guide), then set `ZETARIS_JAR_PATH`, `ZETARIS_USER` and
+`ZETARIS_PASSWORD` in `.env` and run:
+
+```bash
+python scripts/check_zetaris.py                 # SELECT 1
+python scripts/setup_zetaris.py --selftest      # datalake, 3 tables, 6 seed rows; safe to repeat
+```
+
+#### 5 — Switch the real services on and run
+
+Set `SAMPLE_MODE=false` in `.env`, then:
+
+```bash
+WITH_UI=1 bash scripts/run_dev.sh
+```
+
+The UI is at **http://localhost:3001** (Zetaris itself uses port 3000). `GET /health` shows what is connected.
+
+---
+
+## Tests and Evidence
 
 | Check | Command | Result |
 |---|---|---|
@@ -145,21 +339,47 @@ session 2  "It is night again and I am anxious"          -> memories_used:
 
 Saved outputs are in [`docs/evidence/`](docs/evidence/).
 
-## Dependencies
+---
 
-| | Needed for | Notes |
+## Reproducibility Checklist
+
+Judges can verify Muna by following these steps:
+
+- [ ] Clone the repo
+- [ ] `pip install -r requirements-sample.txt` has no missing packages
+- [ ] `cp .env.example .env` (`SAMPLE_MODE=true` is the default)
+- [ ] `WITH_UI=1 bash scripts/run_dev.sh` starts the memory service, backend and UI
+- [ ] `GET /health` shows what is connected
+- [ ] Open http://localhost:3001 and see the Muna splash, then the welcome screen
+- [ ] Type "I cannot sleep at night": a short reply appears with "Answered by <model>"
+- [ ] Tap a mood number (1 to 5) under "How are you feeling right now?"
+- [ ] Settings, **Remember what helps me**, chat in one session, then start a second session: the reply uses recalled notes
+- [ ] Settings, **What do you remember?** lists the notes, and **Forget me** erases them
+- [ ] Send a message about wanting to die: a fixed crisis reply appears (`route: "crisis"`, no model call)
+- [ ] `python -m pytest -q` passes
+- [ ] `npm --prefix engines/hmem run conformance` reports 13/13
+
+---
+
+## Environment Variables
+
+### Backend
+
+| Variable | Required | Description |
 |---|---|---|
-| Python 3.10+ | backend | `requirements-sample.txt` or `requirements.txt` |
-| Node 18+ | H-MEM service, UI | installed automatically by `scripts/run_dev.sh` |
-| Java 8+ | Zetaris JDBC driver | full mode only |
-| **Zetaris** hackathon stack (Docker) | data layer | full mode only; port 3000 (UI), 10000 (JDBC) |
-| **Meterless** H-MEM spec and Runtime provider contract | memory engine, provider client | engine vendored in `engines/hmem` (Apache-2.0) |
-| NVIDIA API key | Nemotron replies | free at build.nvidia.com; never commit it |
-| Model weights | translator | GitHub Release `v0.1-weights`, fetched by `translation.download_weights` |
+| `SAMPLE_MODE` | ✅ | `true` for offline stand-ins (default), `false` for real services |
+| `METERLESS_BASE_URL` | Full mode | Provider endpoint (`https://integrate.api.nvidia.com/v1`, or `http://127.0.0.1:8088/v1` with a Meterless Runtime) |
+| `METERLESS_RUNTIME_TOKEN` | Full mode | NVIDIA key, or the Meterless Runtime token. Never commit it. |
+| `METERLESS_MODEL` | Full mode | `nvidia/nemotron-3.5-lightning-30b-a3b` (or `meterless/auto` with a Runtime) |
+| `METERLESS_EXTRA_BODY` | Optional | Extra request body, e.g. `{"chat_template_kwargs":{"enable_thinking":false}}` |
+| `ZETARIS_JAR_PATH` | Full mode | Path to the Zetaris JDBC driver jar |
+| `ZETARIS_USER` | Full mode | Zetaris user |
+| `ZETARIS_PASSWORD` | Full mode | Zetaris password |
+| `LOG_CONTENT` | Optional | `true` logs message content. Off by default. Synthetic demo data only. |
 
-Details of how each sponsor technology is used: **[`docs/SPONSOR_TECHNOLOGY.md`](docs/SPONSOR_TECHNOLOGY.md)**.
+---
 
-## Safety and privacy
+## Safety and Privacy
 
 - **Crisis path first and offline.** The keyword net runs before translation, memory, Zetaris or any model, and answers with fixed text.
 - **No raw messages stored.** Memory holds short paraphrased notes only, only if the person turns it on, never from a crisis message. The service rejects notes that look like emails, links, phone numbers or instructions.
@@ -167,9 +387,11 @@ Details of how each sponsor technology is used: **[`docs/SPONSOR_TECHNOLOGY.md`]
 - **No message text in logs.** The trace log records route, model, latency and lengths. Content logging is off unless `LOG_CONTENT=true` (synthetic demo data only).
 - **No user text in SQL.** Every value sent to Zetaris is a number, a hash or a fixed-list string.
 - **Honest translation.** If any sentence cannot be translated reliably, no Lamnso is shown, only English.
-- **Supportive text is vetted.** The model is told to offer coping ideas only from the Zetaris library; it is not allowed to diagnose or give medical advice.
+- **Supportive text is vetted.** The model is told to offer coping ideas only from the Zetaris library. It is not allowed to diagnose or give medical advice.
 
-## Known limitations
+---
+
+## Known Limitations
 
 - **Input is English** (the translator only goes English to Lamnso). Lamnso crisis keywords are still detected.
 - **Translation quality is modest.** The checkpoint reports `val_loss 2.90` and `BLEU 7.45`; it was trained on Bible and dictionary text. A fluent-speaker review sheet is generated by `scripts/export_translations_for_review.py`; see [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md).
@@ -177,26 +399,31 @@ Details of how each sponsor technology is used: **[`docs/SPONSOR_TECHNOLOGY.md`]
 - **Meterless Nightshift has no Ubuntu x86 build** (DGX Spark, Mac and Windows only). The provider client implements the Meterless Runtime contract and was tested against NVIDIA's hosted API, as agreed with Meterless staff. See the sponsor document.
 - Mood check-in and library content are generic wellbeing ideas, not clinical guidance.
 
-## Repository map
+---
 
-```
-backend/app/     FastAPI: pipeline, safety, provider client, H-MEM client, Zetaris store, learning
-engines/hmem/    Meterless H-MEM: reference core + care-domain embedder, privacy layer, HTTP service, tests
-translation/     English to Lamnso transformer (pre-existing), wrapper, weights downloader, crisis keywords
-frontend/        Next.js UI to the Muna design spec (two colour variants, splash screen, logo)
-scripts/         run_dev.sh, setup_zetaris.py, check_nightshift.py, check_zetaris.py, export_translations_for_review.py
-sample_data/     crisis_resources.json (verified contacts only)
-legacy/          pre-existing components, declared in PRE_EXISTING.md
-docs/            sponsor explanation, demo script, deck outline, submission checklist, evidence
-```
+## Why Muna Stands Out
 
-## Pre-existing components (declared)
+| Capability | Muna |
+|---|---|
+| Lamnso replies | ✅ Own transformer, sentence by sentence, English always shown underneath |
+| Honest translation | ✅ No Lamnso shown unless every sentence is usable |
+| Crisis path | ✅ Runs first, fixed text, no model and no network |
+| Opt-in memory | ✅ Meterless H-MEM, off by default, readable and erasable |
+| Model transparency | ✅ "Answered by <model>" on every reply, route and model logged |
+| Grounded coping ideas | ✅ The model may only offer ideas from the Zetaris library |
+| Offline demo | ✅ `SAMPLE_MODE=true` runs with no keys and no Zetaris |
+
+---
+
+## Pre-existing Components (declared)
 
 The translation model and tokenizer, the crisis keyword net, the Next.js project scaffolding, and the open-source
 H-MEM reference code were written before the hackathon or come from Meterless. Everything else (the FastAPI backend,
 the Zetaris integration, the provider client, the memory service and privacy layer, the redesigned UI and the
 tests) was built during the build window. Full list: [`legacy/PRE_EXISTING.md`](legacy/PRE_EXISTING.md).
 
-## Licence
+---
+
+## License
 
 Apache-2.0 for `engines/hmem/src` and `engines/hmem/conformance` (Meterless). Project code: add your licence of choice.
